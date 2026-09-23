@@ -107,7 +107,6 @@ def get_days_reply_keyboard(week_name):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  # مسح أي حالة سابقة معلقة فوراً عند بدء البوت
   context.user_data.clear()
 
   text_msg = (
@@ -518,14 +517,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 if __name__ == "__main__":
+  # 1. تشغيل سيرفر الويب في خيط فرعي (Background Thread) ليبقى بورت رندر مفتوحاً
   port = int(os.environ.get("PORT", 8080))
   web_thread = threading.Thread(
-      target=lambda: app.run(host="0.0.0.0", port=port)
+      target=lambda: app.run(host="0.0.0.0", port=port, use_reloader=False)
   )
   web_thread.daemon = True
   web_thread.start()
   print(f"سيرفر الويب شغال على البورت {port}...")
 
+  # 2. تشغيل بوت تيليجرام في الخيط الأساسي (Main Thread) لتوافق تام مع نظام الإشارات الجديد
   TOKEN = "8631135838:AAFLimmQV9KLE5U7wMVuuYPmz9vnlG9U2ww"
   app_bot = ApplicationBuilder().token(TOKEN).build()
 
@@ -534,5 +535,5 @@ if __name__ == "__main__":
       MessageHandler(filters.ALL & ~filters.COMMAND, handle_message)
   )
 
-  print("Uni Helper Bot يعمل الآن في الخيط الأساسي بالسرعة القصوى...")
+  print("Uni Helper Bot يعمل الآن في الخيط الأساسي بنجاح تام...")
   app_bot.run_polling()
