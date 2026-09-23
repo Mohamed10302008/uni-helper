@@ -293,10 +293,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             " أناتومي):"
         )
       elif current_state == "AUTH_DELETE":
-        user_data["state"] = "WAITING_DELETE_TARGET"
+        user_data["state"] = "WAITING_DELETE_WEEK"
         weeks = list(data["sections"]["محاضرات"].get("lectures", {}).keys())
         msg = (
-            "الباسورد صح ✅.\nابعث اسم الأسبوع اللي عايز تمسحه بكل محاضراته:"
+            "الباسورد صح ✅.\nاكتب اسم الأسبوع الذي تريد حذف يوم منه:"
         )
         if weeks:
           msg += f"\nالأسابيع الموجودة حالياً: {', '.join(weeks)}"
@@ -337,24 +337,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  if current_state == "WAITING_DELETE_TARGET":
+  if current_state == "WAITING_DELETE_WEEK":
     target_week = text
     lectures_sec = data["sections"]["محاضرات"].get("lectures", {})
 
     if target_week in lectures_sec:
-      days_in_week = list(lectures_sec[target_week].keys())
-      del lectures_sec[target_week]
-      save_data(data)
-      user_data.clear()
-      days_str = ", ".join(days_in_week) if days_in_week else "لا توجد أيام"
+      user_data["delete_week_target"] = target_week
+      user_data["state"] = "WAITING_DELETE_DAY"
+      days = list(lectures_sec[target_week].keys())
+      days_str = ", ".join(days) if days else "لا توجد أيام مسجلة"
       await update.message.reply_text(
-          f"🗑️ تم مسح الأسبوع ({target_week}) بالكامل!\n🗓️ الأيام التي كانت"
-          f" موجودة وتم حذفها: [{days_str}] بنجاح.",
-          reply_markup=get_main_reply_keyboard(),
+          f"تمام، الأسبوع ({target_week}) موجود.\nالأيام المتاحة فيه حالياً: [{days_str}]\n\nاكتب اسم **اليوم** الذي تريد حذفه فقط:"
       )
     else:
       await update.message.reply_text(
           f"⚠️ مش ملقيين أسبوع بالاسم ده ({target_week})، اتأكد من الكتابة.",
+          reply_markup=get_main_reply_keyboard(),
+      )
+    return
+
+  if current_state == "WAITING_DELETE_DAY":
+    target_day = text
+    target_week = user_data.get("delete_week_target")
+    lectures_sec = data["sections"]["محاضرات"].get("lectures", {})
+
+    if target_week in lectures_sec and target_day in lectures_sec[target_week]:
+      del lectures_sec[target_week][target_day]
+      save_data(data)
+      user_data.clear()
+      await update.message.reply_text(
+          f"🗑️ تم حذف يوم ({target_day}) من ({target_week}) بنجاح تام وباقي الأيام سليمة!",
+          reply_markup=get_main_reply_keyboard(),
+      )
+    else:
+      user_data.clear()
+      await update.message.reply_text(
+          f"⚠️ اليوم ({target_day}) غير موجود في الأسبوع ({target_week}) أو حدث خطأ بالكتابة.",
           reply_markup=get_main_reply_keyboard(),
       )
     return
@@ -405,9 +423,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data["state"] = "WAITING_FILES"
 
     await update.message.reply_text(
-        f"عاش يا دكتور، اخترت يوم: **{text}** 🗓️\n📁 ابعت بقى ملف أو كذا ملف صوتي"
-        " مع بعض (دفعة واحدة)، وبعد ما تخلص ابعت أي كلمة أو حرف عشان تكتب"
-        " اسم المحاضرة:",
+        f"عاش يا دكتور، اخترت يوم: **{text}** 🗓️\n📁 ابعت دلوقتي الملفات أو الفويس (ولو معاها الاسم في الكابتشن هيتفظي لوحده، أو ابعت الملفات وبعدين اكتب اسم المحاضرة في رسالة لوحدها):",
         reply_markup=get_main_reply_keyboard(),
         parse_mode="Markdown",
     )
@@ -427,12 +443,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       file_id = update.message.document.file_id
       file_type = "document"
 
-    # لو المستخدم أرسل ملف ومعاه نص في نفس الرسالة (Caption)
+    # لو أرسل ملف ومعاه Caption (نص مرفق أو اسم مرفق من التحويل)
     if file_id and update.message.caption:
+      file_caption = update.message.caption.strip()
       user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
-      lecture_name = update.message.caption.strip()
       
-      # حفظ المحاضرة مباشرة لأن الاسم مدمج مع الملف
       week_name = user_data.get("temp_week_name")
       day_name = user_data.get("temp_day_name")
       files_list = user_data.get("temp_files")
@@ -444,36 +459,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lectures_dict[week_name][day_name] = []
 
       lectures_dict[week_name][day_name].append(
-          {"name": lecture_name, "files": files_list}
+          {"name": file_caption, "files": files_list}
       )
       save_data(data)
       user_data.clear()
 
       await update.message.reply_text(
-          f"فل يا دكتور! اتضافت تمام مع الاسم بالملف:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة: **{lecture_name}** (عدد الملفات: {len(files_list)})\n\nاضغط على **📚 المحاضرات** من تحت عشان تشوف الشغل التمام!",
+          f"فل يا دكتور! اتضافت تمام واخدنا اسم المحاضرة من الكابتشن:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة: **{file_caption}** (عدد الملفات: {len(files_list)})\n\nاضغط على **📚 المحاضرات** من تحت عشان تشوف الشغل التمام!",
           reply_markup=get_main_reply_keyboard(),
           parse_mode="Markdown",
       )
       return
 
+    # لو أرسل ملف فقط من غير كابتشن
     if file_id:
       user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
       await update.message.reply_text(
-          f"📥 استلمنا ملف (عدد الملفات لحد دلوقتي:"
-          f" {len(user_data['temp_files'])}).\nلو معاك تاني ابعته، لو خلصت ابعت"
-          " اسم المحاضرة علطول:"
+          f"📥 تم استلام الملف بنجاح (إجمالي الملفات لحد دلوقتي: {len(user_data['temp_files'])}).\n\nلو معاك ملفات تانية ابعتها، ولو خلصت **اكتب اسم المحاضرة في رسالة لوحدها** واضغط إرسال علطول:"
       )
       return
-    else:
+
+    # لو كتب نص (اسم المحاضرة) بعد إرسال الملفات
+    if text:
       if not user_data.get("temp_files"):
         await update.message.reply_text(
-            "⚠️ انت مابعتش أي ملفات يا دكتور! ابعت الملفات الأول."
-        )
-        return
-
-      if not text:
-        await update.message.reply_text(
-            "⚠️ من فضلك اكتب اسم المحاضرة بشكل صحيح."
+            "⚠️ يا دكتور أنت لسه مابعتش أي ملفات! ابعت الملفات الصوتية الأول."
         )
         return
 
@@ -498,10 +508,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       user_data.clear()
 
       await update.message.reply_text(
-          f"فل يا دكتور! اتضافت تمام:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم:"
-          f" **{day_name}**\n🎧 المحاضرة: **{lecture_name}** (عدد الملفات:"
-          f" {len(files_list)})\n\nاضغط على **📚 المحاضرات** من تحت عشان تشوف"
-          " الشغل التمام!",
+          f"زي الفل! تمت الإضافة بنجاح:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة: **{lecture_name}** (عدد الملفات: {len(files_list)})\n\nاضغط على زر **📚 المحاضرات** تحت واستعرض براحتك!",
           reply_markup=get_main_reply_keyboard(),
           parse_mode="Markdown",
       )
@@ -518,8 +525,8 @@ if __name__ == "__main__":
   web_thread.start()
   print(f"سيرفر الويب شغال على البورت {port}...")
 
-  # 2. تشغيل بوت تيليجرام في الخيط الأساسي (Main Thread) لتجنب أخطاء النظام
-  TOKEN = "8964990492:AAFy3kskRFG46huYcmCcUthpPdF4Tx_tvJw"
+  # 2. تشغيل بوت تيليجرام في الخيط الأساسي (Main Thread) بالتوكن الجديد
+  TOKEN = "8631135838:AAFLimmQV9KLE5U7wMVuuYPmz9vnlG9U2ww"
   app_bot = ApplicationBuilder().token(TOKEN).build()
 
   app_bot.add_handler(CommandHandler("start", start))
@@ -527,5 +534,5 @@ if __name__ == "__main__":
       MessageHandler(filters.ALL & ~filters.COMMAND, handle_message)
   )
 
-  print("Uni Helper Bot يعمل الآن في الخيط الأساسي...")
+  print("Uni Helper Bot يعمل الآن في الخيط الأساسي بالتوكن الجديد...")
   app_bot.run_polling()
