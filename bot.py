@@ -2,23 +2,16 @@ import json
 import os
 import threading
 from flask import Flask
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-    Update,
-)
+from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
-    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
 
-# --- سيرفر الويب الأساسي عشان رندر يفتح البورت وما يديش خطأ Time Out ---
+# --- سيرفر الويب الأساسي لضمان بقاء البورت مفتوحاً على رندر ---
 app = Flask("")
 
 
@@ -62,7 +55,7 @@ def save_data(data):
     json.dump(data, f, ensure_ascii=False, indent=4)
 
 
-# لوحة التحكم الرئيسية بالعامية المصرية
+# لوحة التحكم الرئيسية
 def get_main_reply_keyboard():
   data = load_data()
   custom_buttons = data.get("custom_buttons", {})
@@ -79,7 +72,7 @@ def get_main_reply_keyboard():
   return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-# لوحة الأسابيع في الأزرار السفلية
+# لوحة الأسابيع
 def get_weeks_reply_keyboard():
   data = load_data()
   lectures_dict = data["sections"]["محاضرات"].get("lectures", {})
@@ -92,7 +85,7 @@ def get_weeks_reply_keyboard():
   return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-# لوحة الأيام الخاصة بأسبوع معين في الأزرار السفلية
+# لوحة الأيام
 def get_days_reply_keyboard(week_name):
   data = load_data()
   days_dict = (
@@ -109,11 +102,9 @@ def get_days_reply_keyboard(week_name):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   context.user_data.clear()
-
   text_msg = (
       "منور يا دكتور في بوت **Uni Helper** لطب أسنان جامعة الزقازيق الأهلية"
-      " (ZNU) 🦷🎓\n\nاضغط على **📚 المحاضرات** من الأزرار تحت عشان تختار الأسبوع"
-      " واليوم براحتك:"
+      " (ZNU) 🦷🎓\n\nاختر من الأزرار بالأسفل:"
   )
   await update.message.reply_text(
       text_msg, reply_markup=get_main_reply_keyboard(), parse_mode="Markdown"
@@ -125,7 +116,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   text = update.message.text.strip() if update.message.text else ""
   data = load_data()
 
-  if text == "❌ خروج" or text == "🔙 رجوع للقائمة الرئيسية":
+  if text in ["❌ خروج", "🔙 رجوع للقائمة الرئيسية"]:
     user_data.clear()
     await update.message.reply_text(
         "تم يا باشا، دي القائمة الرئيسية:",
@@ -139,25 +130,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 1. قائمة المحاضرات
   if text == "📚 المحاضرات":
     user_data.clear()
     lectures_dict = data["sections"]["محاضرات"].get("lectures", {})
-
     if not lectures_dict:
       await update.message.reply_text(
           "لسه مفيش أي أسابيع مسجلة يا دكتور.",
           reply_markup=get_main_reply_keyboard(),
       )
       return
-
     await update.message.reply_text(
-        "📂 اتفضل يا دكتور، دي قائمة الأسابيع ظهرت عندك في الأزرار اللي تحت 👇",
+        "📂 اتفضل يا دكتور، دي قائمة الأسابيع 👇",
         reply_markup=get_weeks_reply_keyboard(),
     )
     return
 
-  # 2. عند الضغط على أسبوع معين
   if text.startswith("📅 "):
     week_name = text.replace("📅 ", "").strip()
     days_dict = (
@@ -165,23 +152,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         .get("lectures", {})
         .get(week_name, {})
     )
-
     if not days_dict:
       await update.message.reply_text(
-          f"مفيش أيام أو محاضرات محطوطة في ({week_name}) لسه.",
+          f"مفيش أيام محطوطة في ({week_name}) لسه.",
           reply_markup=get_weeks_reply_keyboard(),
       )
       return
-
     await update.message.reply_text(
-        f"📂 **{week_name}**\nاختر اليوم من الأزرار اللي تحت عشان تشوف"
-        " محاضراته 👇",
+        f"📂 **{week_name}**\nاختر اليوم 👇",
         reply_markup=get_days_reply_keyboard(week_name),
         parse_mode="Markdown",
     )
     return
 
-  # 3. عند الضغط على اليوم
   if text.startswith("🗓️ يوم "):
     try:
       parts = text.replace("🗓️ يوم ", "").split(" (")
@@ -196,32 +179,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         .get(week_name, {})
         .get(day_name, [])
     )
-
     if not lectures_in_day:
       await update.message.reply_text(
-          f"مفيش محاضرات مسجلة في يوم ({day_name}) لأسبوع ({week_name}).",
+          f"مفيش محاضرات مسجلة في يوم ({day_name}).",
           reply_markup=get_days_reply_keyboard(week_name),
       )
       return
 
     await update.message.reply_text(
-        f"📂 **{week_name}** ⬅️ 🗓️ **يوم {day_name}**\n------------------",
-        parse_mode="Markdown",
+        f"📂 {week_name} ⬅️ 🗓️ يوم {day_name}\n------------------",
     )
-
     for item in lectures_in_day:
       name = item.get("name")
       files = item.get("files", [])
-
-      await update.message.reply_text(
-          f"🎧 محاضرة: **{name}** ({week_name} - {day_name})",
-          parse_mode="Markdown",
-      )
-
+      await update.message.reply_text(f"🎧 محاضرة: {name}")
       for f in files:
         f_id = f.get("file_id")
         f_type = f.get("file_type")
-
         if f_type == "audio":
           await context.bot.send_audio(chat_id=update.message.chat_id, audio=f_id)
         elif f_type == "voice":
@@ -232,16 +206,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           )
     return
 
-  # 4. إضافة محاضرة
-  if text == "➕ ضيف محاضرة" or "اضافه محاضرة" in text or text == "/addlecture":
+  if text in ["➕ ضيف محاضرة", "اضافه محاضرة"] or text == "/addlecture":
     user_data.clear()
     user_data["state"] = "AUTH_PASSWORD"
-    await update.message.reply_text(
-        "🔒 [إضافة محاضرة]\nيلا هات الباسورد الأول عشان نتأكد إنك أنت:"
-    )
+    await update.message.reply_text("🔒 [إضافة محاضرة]\nهات الباسورد الأول:")
     return
 
-  # 5. عرض الكتب
   if text == "📚 كتب طب الأسنان":
     user_data.clear()
     books = data["sections"]["كتب"].get("items", [])
@@ -250,30 +220,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           "لسه مفيش كتب مضافة يا دكتور.", reply_markup=get_main_reply_keyboard()
       )
     else:
-      msg = "📚 **كتب طب الأسنان المرجعية:**\n\n"
+      msg = "📚 كتب طب الأسنان المرجعية:\n\n"
       for i, b in enumerate(books, 1):
         msg += f"{i}. {b}\n"
-      await update.message.reply_text(
-          msg, parse_mode="Markdown", reply_markup=get_main_reply_keyboard()
-      )
+      await update.message.reply_text(msg, reply_markup=get_main_reply_keyboard())
     return
 
-  # 6. إضافة قسم جديد
-  if text == "➕ ضيف قسم جديد" or "اضف خيار" in text:
+  if text in ["➕ ضيف قسم جديد", "اضف خيار"]:
     user_data.clear()
     user_data["state"] = "AUTH_OPTION"
-    await update.message.reply_text(
-        "🔒 [إضافة قسم جديد]\nهات الباسورد يا باشا عشان نكمل:"
-    )
+    await update.message.reply_text("🔒 [إضافة قسم جديد]\nهات الباسورد الأول:")
     return
 
-  # 7. حذف محاضرة
-  if text == "🗑️ امسح محاضرة" or text == "/delete":
+  if text in ["🗑️ امسح محاضرة", "/delete"]:
     user_data.clear()
     user_data["state"] = "AUTH_DELETE"
-    await update.message.reply_text(
-        "🔒 [حذف محتوى]\nدخل الباسورد عشان نسمح لك بالحذف:"
-    )
+    await update.message.reply_text("🔒 [حذف محتوى]\nهات الباسورد الأول:")
     return
 
   current_state = user_data.get("state")
@@ -282,55 +244,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == ADMIN_PASSWORD:
       if current_state == "AUTH_PASSWORD":
         user_data["state"] = "WAITING_WEEK_NAME"
-        await update.message.reply_text(
-            "تمام، الباسورد صح ✅.\n📅 اكتب اسم الأسبوع الأول (زي مثلاً:"
-            " `الاسبوع الاول`):"
-        )
+        await update.message.reply_text("تمام ✅. اكتب اسم الأسبوع:")
       elif current_state == "AUTH_OPTION":
         user_data["state"] = "WAITING_OPTION_NAME"
-        await update.message.reply_text(
-            "الباسورد مظبوط ✅.\nاكتب اسم القسم الجديد اللي عايزه (زي: سكشن"
-            " أناتومي):"
-        )
+        await update.message.reply_text("تمام ✅. اكتب اسم القسم الجديد:")
       elif current_state == "AUTH_DELETE":
         user_data["state"] = "WAITING_DELETE_WEEK"
         weeks = list(data["sections"]["محاضرات"].get("lectures", {}).keys())
-        msg = "الباسورد صح ✅.\nاكتب اسم الأسبوع الذي تريد حذف يوم منه:"
+        msg = "تمام ✅. اكتب اسم الأسبوع الذي تريد حذف يوم منه:"
         if weeks:
-          msg += f"\nالأسابيع الموجودة حالياً: {', '.join(weeks)}"
+          msg += f"\nالأسابيع المتاحة: {', '.join(weeks)}"
         await update.message.reply_text(msg)
     else:
       user_data.clear()
       await update.message.reply_text(
-          "❌ الباسورد غلط يا صاحبي، اللعبة اتلغت.",
-          reply_markup=get_main_reply_keyboard(),
+          "❌ الباسورد غلط.", reply_markup=get_main_reply_keyboard()
       )
     return
 
   if current_state == "WAITING_OPTION_NAME":
     user_data["temp_option_name"] = text
     user_data["state"] = "WAITING_OPTION_CMD"
-    await update.message.reply_text(
-        "تسلم! اكتب بقى اسم الزرار اللي هيظهر تحت عشان يفتح القسم ده:"
-    )
+    await update.message.reply_text("اكتب اسم الزرار الذي سيظهر بالأسفل:")
     return
 
   if current_state == "WAITING_OPTION_CMD":
     btn_text = text
     opt_name = user_data.get("temp_option_name")
     sec_key = "custom_" + str(len(data["sections"]) + 1)
-
     data["sections"][sec_key] = {"title": opt_name, "lectures": {}}
     if "custom_buttons" not in data:
       data["custom_buttons"] = {}
     data["custom_buttons"][btn_text] = sec_key
-
     save_data(data)
     user_data.clear()
-
     await update.message.reply_text(
-        f"🎉 قشطة! عملنا القسم ({opt_name}) والزرار ({btn_text}) اتضاف تحت زي"
-        " الفل 🚀",
+        f"🎉 تم إضافة القسم ({opt_name}) بنجاح!",
         reply_markup=get_main_reply_keyboard(),
     )
     return
@@ -338,21 +287,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if current_state == "WAITING_DELETE_WEEK":
     target_week = text
     lectures_sec = data["sections"]["محاضرات"].get("lectures", {})
-
     if target_week in lectures_sec:
       user_data["delete_week_target"] = target_week
       user_data["state"] = "WAITING_DELETE_DAY"
       days = list(lectures_sec[target_week].keys())
-      days_str = ", ".join(days) if days else "لا توجد أيام مسجلة"
       await update.message.reply_text(
-          f"تمام، الأسبوع ({target_week}) موجود.\nالأيام المتاحة فيه حالياً:"
-          f" [{days_str}]\n\nاكتب اسم **اليوم** الذي تريد حذفه فقط (مثل: الثلاثاء):"
+          f"الأيام المتاحة في ({target_week}):"
+          f" [{', '.join(days) if days else 'لا توجد'}]. اكتب اسم اليوم المراد"
+          " حذفه:"
       )
     else:
       user_data.clear()
       await update.message.reply_text(
-          f"⚠️ مش ملقيين أسبوع بالاسم ده ({target_week})، اتأكد من الكتابة.",
-          reply_markup=get_main_reply_keyboard(),
+          "⚠️ الأسبوع غير موجود.", reply_markup=get_main_reply_keyboard()
       )
     return
 
@@ -360,33 +307,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_day = text
     target_week = user_data.get("delete_week_target")
     lectures_sec = data["sections"]["محاضرات"].get("lectures", {})
-
     if target_week in lectures_sec and target_day in lectures_sec[target_week]:
       del lectures_sec[target_week][target_day]
       save_data(data)
       user_data.clear()
       await update.message.reply_text(
-          f"🗑️ تم حذف يوم ({target_day}) من أسبوع ({target_week}) بنجاح تام!",
+          f"🗑️ تم حذف يوم ({target_day}) بنجاح!",
           reply_markup=get_main_reply_keyboard(),
       )
     else:
       user_data.clear()
       await update.message.reply_text(
-          f"⚠️ اليوم ({target_day}) غير موجود في الأسبوع ({target_week}) أو حدث"
-          " خطأ بالكتابة.",
-          reply_markup=get_main_reply_keyboard(),
+          "⚠️ اليوم غير موجود.", reply_markup=get_main_reply_keyboard()
       )
     return
 
-  # ----------------- دورة الإضافة بالترتيب -----------------
   if current_state == "WAITING_WEEK_NAME":
     if not text:
-      await update.message.reply_text("يا ريت تكتب اسم الأسبوع صح لو سمحت.")
       return
-
     user_data["temp_week_name"] = text
     user_data["state"] = "WAITING_DAY_CHOICE"
-
     keyboard = [
         [
             KeyboardButton("الثلاثاء"),
@@ -395,13 +335,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [KeyboardButton("🔙 إلغاء")],
     ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
     await update.message.reply_text(
-        f"تمام، سجلنا الأسبوع: ({text}) 📅\nاختر **اليوم** من الأزرار اللي تحت"
-        " دي:",
-        reply_markup=reply_markup,
-        parse_mode="Markdown",
+        f"سجلنا الأسبوع: ({text}). اختر اليوم:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
     )
     return
 
@@ -412,23 +348,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           "تم الإلغاء.", reply_markup=get_main_reply_keyboard()
       )
       return
-
     if text not in ["الثلاثاء", "الأربعاء", "الخميس"]:
-      await update.message.reply_text(
-          "⚠️ من فضلك اختر اليوم من الأزرار الموجودة بالأسفل."
-      )
+      await update.message.reply_text("⚠️ اختر اليوم من الأزرار بالأسفل.")
       return
-
     user_data["temp_day_name"] = text
     user_data["temp_files"] = []
+    user_data["temp_caption"] = None
     user_data["state"] = "WAITING_FILES"
-
     await update.message.reply_text(
-        f"عاش يا دكتور، اخترت يوم: **{text}** 🗓️\n📁 ابعت الملفات الصوتية أو"
-        " المستندات (لو معاها كابتشن هيتاخد تلقائياً، أو ابعت الملفات وبعدين"
-        " اكتب اسم المحاضرة في رسالة لوحدها):",
+        f"اخترت يوم: {text} 🗓️\nابعت الملفات أو الفويس (تقدر تبعت أكتر من ملف"
+        " مع بعض دفعة واحدة ومعاهم الكابتشن، أو ابعت الملفات وبعدين اكتب اسم"
+        " المحاضرة في رسالة لوحدها):",
         reply_markup=get_main_reply_keyboard(),
-        parse_mode="Markdown",
     )
     return
 
@@ -447,104 +378,71 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       file_type = "document"
 
     if file_id:
-      # حفظ الكابتشن لو موجود مع الملف الحالي تحديداً
-      file_caption = (
-          update.message.caption.strip() if update.message.caption else None
-      )
       user_data["temp_files"].append(
           {"file_id": file_id, "file_type": file_type}
       )
+      # لو الملف جاي معاك بكابتشن، نخزنه مؤقتاً كاسم للمحاضرة
+      if update.message.caption:
+        user_data["temp_caption"] = update.message.caption.strip()
 
-      if file_caption:
-        # لو الملف معاه كابتشن، نحفظ المحاضرة فوراً باسم الكابتشن ده ونقفل العملية
-        week_name = user_data.get("temp_week_name")
-        day_name = user_data.get("temp_day_name")
-        files_list = user_data.get("temp_files")
-
-        lectures_dict = data["sections"]["محاضرات"]["lectures"]
-        if week_name not in lectures_dict:
-          lectures_dict[week_name] = {}
-        if day_name not in lectures_dict[week_name]:
-          lectures_dict[week_name][day_name] = []
-
-        lectures_dict[week_name][day_name].append(
-            {"name": file_caption, "files": files_list}
-        )
-        save_data(data)
-        user_data.clear()
-
-        await update.message.reply_text(
-            f"فل يا دكتور! اتضافت تمام واخدنا اسم المحاضرة من الكابتشن:\n📂"
-            f" الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة:"
-            f" **{file_caption}**\n\nاضغط على **📚 المحاضرات** من تحت عشان تشوف"
-            " الشغل التمام!",
-            reply_markup=get_main_reply_keyboard(),
-            parse_mode="Markdown",
-        )
-        return
-      else:
-        await update.message.reply_text(
-            f"📥 استلمنا ملف (عدد الملفات لحد دلوقتي:"
-            f" {len(user_data['temp_files'])}).\nلو معاك تاني ابعته، لو خلصت ابعت"
-            " اسم المحاضرة في رسالة علطول:"
-        )
-        return
+      await update.message.reply_text(
+          f"📥 تم استلام ملف (إجمالي الملفات: {len(user_data['temp_files'])})."
+          " ابعت تاني لو حابب، ولو خلصت ابعت أي رسالة فيها اسم المحاضرة أو"
+          " اضغط إرسال لو كاتب كابتشن:"
+      )
+      return
     else:
-      if not user_data.get("temp_files"):
-        await update.message.reply_text(
-            "⚠️ انت مابعتش أي ملفات يا دكتور! ابعت الملفات الأول."
-        )
-        return
+      # المستخدم كتب رسالة نصية (اسم المحاضرة أو أمر إنهاء)
+      lecture_name = (
+          text if text else user_data.get("temp_caption")
+      )  # نأخذ النص أو الكابتشن المخزن
+      if not lecture_name:
+        if user_data.get("temp_files"):
+          # لو مفيش نص بس فيه كابتشن محفوظ من الملفات
+          lecture_name = "محاضرة بدون اسم"
+        else:
+          await update.message.reply_text(
+              "⚠️ أنت لم ترسل أي ملفات! ابعت الملفات الصوتية أولاً."
+          )
+          return
 
-      lecture_name = text
       week_name = user_data.get("temp_week_name")
       day_name = user_data.get("temp_day_name")
       files_list = user_data.get("temp_files")
-
       lectures_dict = data["sections"]["محاضرات"]["lectures"]
 
       if week_name not in lectures_dict:
         lectures_dict[week_name] = {}
-
       if day_name not in lectures_dict[week_name]:
         lectures_dict[week_name][day_name] = []
 
       lectures_dict[week_name][day_name].append(
           {"name": lecture_name, "files": files_list}
       )
-
       save_data(data)
       user_data.clear()
 
       await update.message.reply_text(
-          f"فل يا دكتور! اتضافت تمام:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم:"
-          f" **{day_name}**\n🎧 المحاضرة: **{lecture_name}** (عدد الملفات:"
-          f" {len(files_list)})\n\nاضغط على **📚 المحاضرات** من تحت عشان تشوف"
-          " الشغل التمام!",
+          f"🚀 تم حفظ المحاضرة ({lecture_name}) بعدد ({len(files_list)}) ملف"
+          " بنجاح تام!",
           reply_markup=get_main_reply_keyboard(),
-          parse_mode="Markdown",
       )
       return
 
 
 if __name__ == "__main__":
-  # 1. تشغيل سيرفر الويب في خيط فرعي (Background Thread) ليبقى البورت مفتوحاً لرندر
   port = int(os.environ.get("PORT", 8080))
   web_thread = threading.Thread(
       target=lambda: app.run(host="0.0.0.0", port=port)
   )
   web_thread.daemon = True
   web_thread.start()
-  print(f"سيرفر الويب شغال على البورت {port}...")
 
-  # 2. تشغيل بوت تيليجرام في الخيط الأساسي (Main Thread) لتجنب أخطاء النظام
   TOKEN = "8964990492:AAFy3kskRFG46huYcmCcUthpPdF4Tx_tvJw"
   app_bot = ApplicationBuilder().token(TOKEN).build()
-
   app_bot.add_handler(CommandHandler("start", start))
   app_bot.add_handler(
       MessageHandler(filters.ALL & ~filters.COMMAND, handle_message)
   )
 
-  print("Uni Helper Bot يعمل الآن في الخيط الأساسي...")
   app_bot.run_polling()
