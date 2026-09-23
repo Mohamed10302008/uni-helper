@@ -267,7 +267,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 7. حذف محاضرة (معدلة لحذف يوم معين داخل الأسبوع)
+  # 7. حذف محاضرة
   if text == "🗑️ امسح محاضرة" or text == "/delete":
     user_data.clear()
     user_data["state"] = "AUTH_DELETE"
@@ -335,7 +335,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # خطوات حذف يوم معين
   if current_state == "WAITING_DELETE_WEEK":
     target_week = text
     lectures_sec = data["sections"]["محاضرات"].get("lectures", {})
@@ -425,10 +424,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data["state"] = "WAITING_FILES"
 
     await update.message.reply_text(
-        f"عاش يا دكتور، اخترت يوم: **{text}** 🗓️\n📁 ابعت بقى ملف أو كذا ملف صوتي"
-        " مع بعض (دفعة واحدة). ولو كاتب اسم المحاضرة في كابتشن (Caption) الفويس"
-        " هيتسجل لوحده، أو ابعت الملفات وبعدين اكتب اسم المحاضرة في رسالة"
-        " لوحدها:",
+        f"عاش يا دكتور، اخترت يوم: **{text}** 🗓️\n📁 ابعت الملفات الصوتية أو"
+        " المستندات (لو معاها كابتشن هيتاخد تلقائياً، أو ابعت الملفات وبعدين"
+        " اكتب اسم المحاضرة في رسالة لوحدها):",
         reply_markup=get_main_reply_keyboard(),
         parse_mode="Markdown",
     )
@@ -448,45 +446,49 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       file_id = update.message.document.file_id
       file_type = "document"
 
-    # ميزة قراءة الكابتشن مع أول فويس يوصل
-    if file_id and update.message.caption:
-      file_caption = update.message.caption.strip()
-      user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
-
-      week_name = user_data.get("temp_week_name")
-      day_name = user_data.get("temp_day_name")
-      files_list = user_data.get("temp_files")
-
-      lectures_dict = data["sections"]["محاضرات"]["lectures"]
-      if week_name not in lectures_dict:
-        lectures_dict[week_name] = {}
-      if day_name not in lectures_dict[week_name]:
-        lectures_dict[week_name][day_name] = []
-
-      lectures_dict[week_name][day_name].append(
-          {"name": file_caption, "files": files_list}
-      )
-      save_data(data)
-      user_data.clear()
-
-      await update.message.reply_text(
-          f"فل يا دكتور! اتضافت تمام واخدنا اسم المحاضرة من الكابتشن:\n📂"
-          f" الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة:"
-          f" **{file_caption}** (عدد الملفات: {len(files_list)})\n\nاضغط على"
-          " **📚 المحاضرات** من تحت عشان تشوف الشغل التمام!",
-          reply_markup=get_main_reply_keyboard(),
-          parse_mode="Markdown",
-      )
-      return
-
     if file_id:
-      user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
-      await update.message.reply_text(
-          f"📥 استلمنا ملف (عدد الملفات لحد دلوقتي:"
-          f" {len(user_data['temp_files'])}).\nلو معاك تاني ابعته، لو خلصت ابعت"
-          " اسم المحاضرة علطول:"
+      # حفظ الكابتشن لو موجود مع الملف الحالي تحديداً
+      file_caption = (
+          update.message.caption.strip() if update.message.caption else None
       )
-      return
+      user_data["temp_files"].append(
+          {"file_id": file_id, "file_type": file_type}
+      )
+
+      if file_caption:
+        # لو الملف معاه كابتشن، نحفظ المحاضرة فوراً باسم الكابتشن ده ونقفل العملية
+        week_name = user_data.get("temp_week_name")
+        day_name = user_data.get("temp_day_name")
+        files_list = user_data.get("temp_files")
+
+        lectures_dict = data["sections"]["محاضرات"]["lectures"]
+        if week_name not in lectures_dict:
+          lectures_dict[week_name] = {}
+        if day_name not in lectures_dict[week_name]:
+          lectures_dict[week_name][day_name] = []
+
+        lectures_dict[week_name][day_name].append(
+            {"name": file_caption, "files": files_list}
+        )
+        save_data(data)
+        user_data.clear()
+
+        await update.message.reply_text(
+            f"فل يا دكتور! اتضافت تمام واخدنا اسم المحاضرة من الكابتشن:\n📂"
+            f" الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة:"
+            f" **{file_caption}**\n\nاضغط على **📚 المحاضرات** من تحت عشان تشوف"
+            " الشغل التمام!",
+            reply_markup=get_main_reply_keyboard(),
+            parse_mode="Markdown",
+        )
+        return
+      else:
+        await update.message.reply_text(
+            f"📥 استلمنا ملف (عدد الملفات لحد دلوقتي:"
+            f" {len(user_data['temp_files'])}).\nلو معاك تاني ابعته، لو خلصت ابعت"
+            " اسم المحاضرة في رسالة علطول:"
+        )
+        return
     else:
       if not user_data.get("temp_files"):
         await update.message.reply_text(
