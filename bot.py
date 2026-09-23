@@ -507,8 +507,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
 
-# دالة تشغيل بوت تيليجرام في الخلفية
-def run_telegram_bot():
+if __name__ == "__main__":
+  # 1. تشغيل سيرفر الويب في خيط فرعي (Background Thread) ليبقى البورت مفتوحاً لرندر
+  port = int(os.environ.get("PORT", 8080))
+  web_thread = threading.Thread(
+      target=lambda: app.run(host="0.0.0.0", port=port)
+  )
+  web_thread.daemon = True
+  web_thread.start()
+  print(f"سيرفر الويب شغال على البورت {port}...")
+
+  # 2. تشغيل بوت تيليجرام في الخيط الأساسي (Main Thread) لتجنب أخطاء النظام
   TOKEN = "8964990492:AAFy3kskRFG46huYcmCcUthpPdF4Tx_tvJw"
   app_bot = ApplicationBuilder().token(TOKEN).build()
 
@@ -517,16 +526,5 @@ def run_telegram_bot():
       MessageHandler(filters.ALL & ~filters.COMMAND, handle_message)
   )
 
-  print("Uni Helper شغال في الخلفية زي الصاروخ...")
+  print("Uni Helper Bot يعمل الآن في الخيط الأساسي...")
   app_bot.run_polling()
-
-
-if __name__ == "__main__":
-  # 1. تشغيل البوت في خيط (Thread) مستقل عشان ما يعطلش سيرفر الويب
-  bot_thread = threading.Thread(target=run_telegram_bot)
-  bot_thread.daemon = True
-  bot_thread.start()
-
-  # 2. تشغيل سيرفر الويب على البورت الأساسي ليرضي رندر فوراً
-  port = int(os.environ.get("PORT", 8080))
-  app.run(host="0.0.0.0", port=port)
