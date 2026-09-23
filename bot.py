@@ -244,7 +244,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == ADMIN_PASSWORD:
       if current_state == "AUTH_PASSWORD":
         user_data["state"] = "WAITING_WEEK_NAME"
-        await update.message.reply_text("تمام ✅. اكتب اسم الأسبوع:")
+        await update.message.reply_text(
+            "تمام ✅. اكتب اسم الأسبوع (مثال: الاسبوع الاول):"
+        )
       elif current_state == "AUTH_OPTION":
         user_data["state"] = "WAITING_OPTION_NAME"
         await update.message.reply_text("تمام ✅. اكتب اسم القسم الجديد:")
@@ -324,6 +326,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if current_state == "WAITING_WEEK_NAME":
     if not text:
+      await update.message.reply_text("من فضلك اكتب اسم الأسبوع بشكل صحيح.")
       return
     user_data["temp_week_name"] = text
     user_data["state"] = "WAITING_DAY_CHOICE"
@@ -336,7 +339,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [KeyboardButton("🔙 إلغاء")],
     ]
     await update.message.reply_text(
-        f"سجلنا الأسبوع: ({text}). اختر اليوم:",
+        f"سجلنا الأسبوع: ({text}). اختر اليوم من الأزرار بالأسفل:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
     )
     return
@@ -349,7 +352,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       )
       return
     if text not in ["الثلاثاء", "الأربعاء", "الخميس"]:
-      await update.message.reply_text("⚠️ اختر اليوم من الأزرار بالأسفل.")
+      await update.message.reply_text(
+          "⚠️ من فضلك اختر اليوم من الأزرار الموجودة بالأسفل."
+      )
       return
     user_data["temp_day_name"] = text
     user_data["temp_files"] = []
@@ -357,8 +362,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data["state"] = "WAITING_FILES"
     await update.message.reply_text(
         f"اخترت يوم: {text} 🗓️\nابعت الملفات أو الفويس (تقدر تبعت أكتر من ملف"
-        " مع بعض دفعة واحدة ومعاهم الكابتشن، أو ابعت الملفات وبعدين اكتب اسم"
-        " المحاضرة في رسالة لوحدها):",
+        " مع بعض دفعة واحدة، ولو حابب ابعت اسم المحاضرة في رسالة بعدها لوحدة):",
         reply_markup=get_main_reply_keyboard(),
     )
     return
@@ -381,24 +385,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       user_data["temp_files"].append(
           {"file_id": file_id, "file_type": file_type}
       )
-      # لو الملف جاي معاك بكابتشن، نخزنه مؤقتاً كاسم للمحاضرة
       if update.message.caption:
         user_data["temp_caption"] = update.message.caption.strip()
 
       await update.message.reply_text(
-          f"📥 تم استلام ملف (إجمالي الملفات: {len(user_data['temp_files'])})."
-          " ابعت تاني لو حابب، ولو خلصت ابعت أي رسالة فيها اسم المحاضرة أو"
-          " اضغط إرسال لو كاتب كابتشن:"
+          f"📥 تم استلام الملف (إجمالي الملفات: {len(user_data['temp_files'])})."
+          " ابعت تاني لو حابب، ولو خلصت ابعت اسم المحاضرة في رسالة:"
       )
       return
     else:
-      # المستخدم كتب رسالة نصية (اسم المحاضرة أو أمر إنهاء)
-      lecture_name = (
-          text if text else user_data.get("temp_caption")
-      )  # نأخذ النص أو الكابتشن المخزن
+      # معالجة النص المرسل (اسم المحاضرة)
+      lecture_name = text if text else user_data.get("temp_caption")
       if not lecture_name:
         if user_data.get("temp_files"):
-          # لو مفيش نص بس فيه كابتشن محفوظ من الملفات
           lecture_name = "محاضرة بدون اسم"
         else:
           await update.message.reply_text(
