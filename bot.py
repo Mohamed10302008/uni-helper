@@ -139,7 +139,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 1. قائمة المحاضرات (تظهر الأسابيع في الأزرار السفلية)
+  # 1. قائمة المحاضرات
   if text == "📚 المحاضرات":
     user_data.clear()
     lectures_dict = data["sections"]["محاضرات"].get("lectures", {})
@@ -157,7 +157,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 2. عند الضغط على أسبوع معين من تحت، نظهر الأيام في الأزرار السفلية
+  # 2. عند الضغط على أسبوع معين
   if text.startswith("📅 "):
     week_name = text.replace("📅 ", "").strip()
     days_dict = (
@@ -181,7 +181,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 3. عند الضغط على اليوم من الأزرار السفلية
+  # 3. عند الضغط على اليوم
   if text.startswith("🗓️ يوم "):
     try:
       parts = text.replace("🗓️ يوم ", "").split(" (")
@@ -267,7 +267,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 7. حذف محاضرة
+  # 7. حذف محاضرة (معدلة لحذف يوم معين داخل الأسبوع)
   if text == "🗑️ امسح محاضرة" or text == "/delete":
     user_data.clear()
     user_data["state"] = "AUTH_DELETE"
@@ -293,11 +293,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             " أناتومي):"
         )
       elif current_state == "AUTH_DELETE":
-        user_data["state"] = "WAITING_DELETE_TARGET"
+        user_data["state"] = "WAITING_DELETE_WEEK"
         weeks = list(data["sections"]["محاضرات"].get("lectures", {}).keys())
-        msg = (
-            "الباسورد صح ✅.\nابعث اسم الأسبوع اللي عايز تمسحه بكل محاضراته:"
-        )
+        msg = "الباسورد صح ✅.\nاكتب اسم الأسبوع الذي تريد حذف يوم منه:"
         if weeks:
           msg += f"\nالأسابيع الموجودة حالياً: {', '.join(weeks)}"
         await update.message.reply_text(msg)
@@ -337,21 +335,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  if current_state == "WAITING_DELETE_TARGET":
+  # خطوات حذف يوم معين
+  if current_state == "WAITING_DELETE_WEEK":
     target_week = text
-    user_data.clear()
     lectures_sec = data["sections"]["محاضرات"].get("lectures", {})
 
     if target_week in lectures_sec:
-      del lectures_sec[target_week]
-      save_data(data)
+      user_data["delete_week_target"] = target_week
+      user_data["state"] = "WAITING_DELETE_DAY"
+      days = list(lectures_sec[target_week].keys())
+      days_str = ", ".join(days) if days else "لا توجد أيام مسجلة"
       await update.message.reply_text(
-          f"🗑️ تم مسح الأسبوع ({target_week}) بكل اللي فيه بنجاح!",
+          f"تمام، الأسبوع ({target_week}) موجود.\nالأيام المتاحة فيه حالياً:"
+          f" [{days_str}]\n\nاكتب اسم **اليوم** الذي تريد حذفه فقط (مثل: الثلاثاء):"
+      )
+    else:
+      user_data.clear()
+      await update.message.reply_text(
+          f"⚠️ مش ملقيين أسبوع بالاسم ده ({target_week})، اتأكد من الكتابة.",
+          reply_markup=get_main_reply_keyboard(),
+      )
+    return
+
+  if current_state == "WAITING_DELETE_DAY":
+    target_day = text
+    target_week = user_data.get("delete_week_target")
+    lectures_sec = data["sections"]["محاضرات"].get("lectures", {})
+
+    if target_week in lectures_sec and target_day in lectures_sec[target_week]:
+      del lectures_sec[target_week][target_day]
+      save_data(data)
+      user_data.clear()
+      await update.message.reply_text(
+          f"🗑️ تم حذف يوم ({target_day}) من أسبوع ({target_week}) بنجاح تام!",
           reply_markup=get_main_reply_keyboard(),
       )
     else:
+      user_data.clear()
       await update.message.reply_text(
-          f"⚠️ مش ملقيين أسبوع بالاسم ده ({target_week})، اتأكد من الكتابة.",
+          f"⚠️ اليوم ({target_day}) غير موجود في الأسبوع ({target_week}) أو حدث"
+          " خطأ بالكتابة.",
           reply_markup=get_main_reply_keyboard(),
       )
     return
@@ -403,8 +426,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"عاش يا دكتور، اخترت يوم: **{text}** 🗓️\n📁 ابعت بقى ملف أو كذا ملف صوتي"
-        " مع بعض (دفعة واحدة)، وبعد ما تخلص ابعت أي كلمة أو حرف عشان تكتب"
-        " اسم المحاضرة:",
+        " مع بعض (دفعة واحدة). ولو كاتب اسم المحاضرة في كابتشن (Caption) الفويس"
+        " هيتسجل لوحده، أو ابعت الملفات وبعدين اكتب اسم المحاضرة في رسالة"
+        " لوحدها:",
         reply_markup=get_main_reply_keyboard(),
         parse_mode="Markdown",
     )
@@ -424,6 +448,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       file_id = update.message.document.file_id
       file_type = "document"
 
+    # ميزة قراءة الكابتشن مع أول فويس يوصل
+    if file_id and update.message.caption:
+      file_caption = update.message.caption.strip()
+      user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
+
+      week_name = user_data.get("temp_week_name")
+      day_name = user_data.get("temp_day_name")
+      files_list = user_data.get("temp_files")
+
+      lectures_dict = data["sections"]["محاضرات"]["lectures"]
+      if week_name not in lectures_dict:
+        lectures_dict[week_name] = {}
+      if day_name not in lectures_dict[week_name]:
+        lectures_dict[week_name][day_name] = []
+
+      lectures_dict[week_name][day_name].append(
+          {"name": file_caption, "files": files_list}
+      )
+      save_data(data)
+      user_data.clear()
+
+      await update.message.reply_text(
+          f"فل يا دكتور! اتضافت تمام واخدنا اسم المحاضرة من الكابتشن:\n📂"
+          f" الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة:"
+          f" **{file_caption}** (عدد الملفات: {len(files_list)})\n\nاضغط على"
+          " **📚 المحاضرات** من تحت عشان تشوف الشغل التمام!",
+          reply_markup=get_main_reply_keyboard(),
+          parse_mode="Markdown",
+      )
+      return
+
     if file_id:
       user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
       await update.message.reply_text(
@@ -438,9 +493,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ انت مابعتش أي ملفات يا دكتور! ابعت الملفات الأول."
         )
         return
-
-      user_data["temp_lecture_name"] = text
-      user_data["state"] = "WAITING_LECTURE_NAME_FINAL"
 
       lecture_name = text
       week_name = user_data.get("temp_week_name")
@@ -471,40 +523,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           parse_mode="Markdown",
       )
       return
-
-  if current_state == "WAITING_LECTURE_NAME_FINAL":
-    if not text:
-      await update.message.reply_text("يا ريت تكتب اسم المحاضرة بشكل مظبوط.")
-      return
-
-    lecture_name = text
-    week_name = user_data.get("temp_week_name")
-    day_name = user_data.get("temp_day_name")
-    files_list = user_data.get("temp_files")
-
-    lectures_dict = data["sections"]["محاضرات"]["lectures"]
-
-    if week_name not in lectures_dict:
-      lectures_dict[week_name] = {}
-
-    if day_name not in lectures_dict[week_name]:
-      lectures_dict[week_name][day_name] = []
-
-    lectures_dict[week_name][day_name].append(
-        {"name": lecture_name, "files": files_list}
-    )
-
-    save_data(data)
-    user_data.clear()
-
-    await update.message.reply_text(
-        f"زي الفل! تمت الإضافة بنجاح:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم:"
-        f" **{day_name}**\n🎧 المحاضرة: **{lecture_name}**\n\nاضغط على زر **📚"
-        " المحاضرات** تحت واستعرض براحتك!",
-        reply_markup=get_main_reply_keyboard(),
-        parse_mode="Markdown",
-    )
-    return
 
 
 if __name__ == "__main__":
