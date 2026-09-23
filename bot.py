@@ -1,5 +1,7 @@
 import json
 import os
+from threading import Thread
+from flask import Flask
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -15,6 +17,24 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+
+# --- سيرفر الويب المصغر عشان رندر يشتغل مجاني وما يديش خطأ بورت ---
+app = Flask("")
+
+
+@app.route("/")
+def home():
+  return "Uni Helper Bot is alive and running!"
+
+
+def run_web():
+  port = int(os.environ.get("PORT", 8080))
+  app.run(host="0.0.0.0", port=port)
+
+
+t = Thread(target=run_web)
+t.start()
+# -------------------------------------------------------------
 
 ADMIN_PASSWORD = "15309"
 DATA_FILE = "znu_dental_data.json"
@@ -146,7 +166,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 2. عند الضغط على أسبوع معين من تحت، نظهر الأيام (الثلاثاء، الاربعاء، الخميس) في الأزرار السفلية مباشرة
+  # 2. عند الضغط على أسبوع معين من تحت، نظهر الأيام في الأزرار السفلية
   if text.startswith("📅 "):
     week_name = text.replace("📅 ", "").strip()
     days_dict = (
@@ -170,9 +190,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 3. عند الضغط على اليوم من الأزرار السفلية (يبدأ بـ 🗓️ يوم)
+  # 3. عند الضغط على اليوم من الأزرار السفلية
   if text.startswith("🗓️ يوم "):
-    # نستخرج اسم اليوم واسم الأسبوع من النص
     try:
       parts = text.replace("🗓️ يوم ", "").split(" (")
       day_name = parts[0].strip()
@@ -215,7 +234,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if f_type == "audio":
           await context.bot.send_audio(chat_id=update.message.chat_id, audio=f_id)
         elif f_type == "voice":
-          await context.bot.send_voice(chat_id=update.message.chat_id, audio=f_id)
+          await context.bot.send_voice(chat_id=update.message.chat_id, voice=f_id)
         elif f_type == "document":
           await context.bot.send_document(
               chat_id=update.message.chat_id, document=f_id
@@ -346,9 +365,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       )
     return
 
-  # ----------------- دورة الإضافة بالترتيب المطلوب -----------------
-
-  # الخطوة 1: استقبال اسم الأسبوع
+  # ----------------- دورة الإضافة بالترتيب -----------------
   if current_state == "WAITING_WEEK_NAME":
     if not text:
       await update.message.reply_text("يا ريت تكتب اسم الأسبوع صح لو سمحت.")
@@ -357,7 +374,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data["temp_week_name"] = text
     user_data["state"] = "WAITING_DAY_CHOICE"
 
-    # أزرار اختيار اليوم تحت في لوحة التحكم السفلية أثناء الإضافة
     keyboard = [
         [
             KeyboardButton("الثلاثاء"),
@@ -376,7 +392,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # الخطوة 2: استقبال اليوم المختار
   if current_state == "WAITING_DAY_CHOICE":
     if text == "🔙 إلغاء":
       user_data.clear()
@@ -387,8 +402,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text not in ["الثلاثاء", "الأربعاء", "الخميس"]:
       await update.message.reply_text(
-          "⚠️ من فضلك اختر اليوم من الأزرار الموجودة بالأفل (الثلاثاء، الأربعاء،"
-          " الخميس)."
+          "⚠️ من فضلك اختر اليوم من الأزرار الموجودة بالأسفل."
       )
       return
 
@@ -405,7 +419,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # الخطوة 3: استقبال الملفات الصوتية
   if current_state == "WAITING_FILES":
     file_id = None
     file_type = None
@@ -494,7 +507,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data.clear()
 
     await update.message.reply_text(
-        f"زی الفل! تمت الإضافة بنجاح:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم:"
+        f"زي الفل! تمت الإضافة بنجاح:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم:"
         f" **{day_name}**\n🎧 المحاضرة: **{lecture_name}**\n\nاضغط على زر **📚"
         " المحاضرات** تحت واستعرض براحتك!",
         reply_markup=get_main_reply_keyboard(),
@@ -503,68 +516,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
 
-# التعامل مع الأزرار التفاعلية للأقسام التانية (لو وجدت)
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  query = update.callback_query
-  await query.answer()
-
-  data = load_data()
-  data_key = query.data
-
-  if data_key.startswith("customweek_"):
-    parts = data_key.split("_", 2)
-    sec_key = parts[1]
-    week_name = parts[2]
-
-    lectures_in_week = (
-        data["sections"].get(sec_key, {}).get("lectures", {}).get(week_name, [])
-    )
-
-    if not lectures_in_week:
-      await query.message.reply_text(f"مفيش محاضرات في ({week_name}) لسه.")
-      return
-
-    await query.message.reply_text(
-        f"📂 **{week_name}**\n------------------", parse_mode="Markdown"
-    )
-
-    for item in lectures_in_week:
-      name = item.get("name")
-      files = item.get("files", [])
-
-      await query.message.reply_text(
-          f"🎧 محاضرة: **{name}** ({week_name})", parse_mode="Markdown"
-      )
-
-      for f in files:
-        f_id = f.get("file_id")
-        f_type = f.get("file_type")
-
-        if f_type == "audio":
-          await context.bot.send_audio(
-              chat_id=query.message.chat_id, audio=f_id
-          )
-        elif f_type == "voice":
-          await context.bot.send_voice(
-              chat_id=query.message.chat_id, audio=f_id
-          )
-        elif f_type == "document":
-          await context.bot.send_document(
-              chat_id=query.message.chat_id, audio=f_id
-          )
-
-
 def main():
   TOKEN = "8964990492:AAFy3kskRFG46huYcmCcUthpPdF4Tx_tvJw"
 
-  app = ApplicationBuilder().token(TOKEN).build()
+  app_bot = ApplicationBuilder().token(TOKEN).build()
 
-  app.add_handler(CommandHandler("start", start))
-  app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
-  app.add_handler(CallbackQueryHandler(button_handler))
+  app_bot.add_handler(CommandHandler("start", start))
+  app_bot.add_handler(
+      MessageHandler(filters.ALL & ~filters.COMMAND, handle_message)
+  )
 
-  print("Uni Helper بالترتيب الجديد والأزرار السفلية للأيام شغال زي الصاروخ...")
-  app.run_polling()
+  print("Uni Helper شغال زي الصاروخ على Render ومع Flask تمام...")
+  app_bot.run_polling()
 
 
 if __name__ == "__main__":
