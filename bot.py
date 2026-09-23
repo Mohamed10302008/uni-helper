@@ -62,7 +62,7 @@ def get_main_reply_keyboard():
 
   keyboard = [
       [KeyboardButton("📚 المحاضرات"), KeyboardButton("📚 كتب طب الأسنان")],
-      [KeyboardButton("➕ ضيف محاضرة"), KeyboardButton("➕ ضيف قسم جديد")],
+      [KeyboardButton("➕ ضيف محاضرة"), KeyboardButton("➕ ضيف كتاب")],
       [KeyboardButton("🗑️ امسح محاضرة"), KeyboardButton("❌ خروج")],
   ]
 
@@ -72,7 +72,7 @@ def get_main_reply_keyboard():
   return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-# لوحة الأسابيع
+# لوحة الأسابيع للمحاضرات
 def get_weeks_reply_keyboard():
   data = load_data()
   lectures_dict = data["sections"]["محاضرات"].get("lectures", {})
@@ -85,7 +85,7 @@ def get_weeks_reply_keyboard():
   return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-# لوحة الأيام
+# لوحة الأيام للمحاضرات
 def get_days_reply_keyboard(week_name):
   data = load_data()
   days_dict = (
@@ -97,6 +97,20 @@ def get_days_reply_keyboard(week_name):
     keyboard.append([KeyboardButton(f"🗓️ يوم {day_name} ({week_name})")])
 
   keyboard.append([KeyboardButton("🔙 رجوع للأسابيع")])
+  return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+# لوحة قائمة الكتب في الأزرار السفلية
+def get_books_reply_keyboard():
+  data = load_data()
+  books_list = data["sections"]["كتب"].get("items", [])
+
+  keyboard = []
+  for book in books_list:
+    book_name = book.get("name", "كتاب بدون اسم")
+    keyboard.append([KeyboardButton(f"📖 {book_name}")])
+
+  keyboard.append([KeyboardButton("🔙 رجوع للقائمة الرئيسية")])
   return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
@@ -130,6 +144,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
+  # 1. قسم المحاضرات
   if text == "📚 المحاضرات":
     user_data.clear()
     lectures_dict = data["sections"]["محاضرات"].get("lectures", {})
@@ -206,50 +221,81 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           )
     return
 
-  if text in ["➕ ضيف محاضرة", "اضافه محاضرة"] or text == "/addlecture":
-    user_data.clear()
-    user_data["state"] = "AUTH_PASSWORD"
-    await update.message.reply_text("🔒 [إضافة محاضرة]\nهات الباسورد الأول:")
-    return
-
+  # 2. قسم الكتب التفاعلي (عرض الكتب في أزرار أسفل الشاشة)
   if text == "📚 كتب طب الأسنان":
     user_data.clear()
-    books = data["sections"]["كتب"].get("items", [])
-    if not books:
+    books_list = data["sections"]["كتب"].get("items", [])
+    if not books_list:
       await update.message.reply_text(
           "لسه مفيش كتب مضافة يا دكتور.", reply_markup=get_main_reply_keyboard()
       )
-    else:
-      msg = "📚 كتب طب الأسنان المرجعية:\n\n"
-      for i, b in enumerate(books, 1):
-        msg += f"{i}. {b}\n"
-      await update.message.reply_text(msg, reply_markup=get_main_reply_keyboard())
+      return
+    await update.message.reply_text(
+        "📚 اتفضل يا دكتور، دي قائمة الكتب المتاحة ظهرت في الأزرار بالأسفل 👇",
+        reply_markup=get_books_reply_keyboard(),
+    )
     return
 
-  if text in ["➕ ضيف قسم جديد", "اضف خيار"]:
+  if text.startswith("📖 "):
+    book_title = text.replace("📖 ", "").strip()
+    books_list = data["sections"]["كتب"].get("items", [])
+    target_book = None
+    for b in books_list:
+      if b.get("name") == book_title:
+        target_book = b
+        break
+
+    if target_book:
+      await update.message.reply_text(f"📖 كتاب: **{book_title}**")
+      f_id = target_book.get("file_id")
+      f_type = target_book.get("file_type", "document")
+      if f_type == "audio":
+        await context.bot.send_audio(chat_id=update.message.chat_id, audio=f_id)
+      elif f_type == "voice":
+        await context.bot.send_voice(chat_id=update.message.chat_id, voice=f_id)
+      else:
+        await context.bot.send_document(
+            chat_id=update.message.chat_id, document=f_id
+        )
+    else:
+      await update.message.reply_text("⚠️ عذراً، لم يتم العثور على هذا الكتاب.")
+    return
+
+  # 3. الأوامر والإدارة
+  if text in ["➕ ضيف محاضرة", "اضافه محاضرة"] or text == "/addlecture":
     user_data.clear()
-    user_data["state"] = "AUTH_OPTION"
-    await update.message.reply_text("🔒 [إضافة قسم جديد]\nهات الباسورد الأول:")
+    user_data["state"] = "AUTH_PASSWORD"
+    await update.message.reply_text(
+        "🔒 [إضافة محاضرة]\nهات باسورد المسؤول الأول:"
+    )
+    return
+
+  if text == "➕ ضيف كتاب":
+    user_data.clear()
+    user_data["state"] = "AUTH_BOOK_PASSWORD"
+    await update.message.reply_text("🔒 [إضافة كتاب جديد]\nهات باسورد المسؤول الأول:")
     return
 
   if text in ["🗑️ امسح محاضرة", "/delete"]:
     user_data.clear()
     user_data["state"] = "AUTH_DELETE"
-    await update.message.reply_text("🔒 [حذف محتوى]\nهات الباسورد الأول:")
+    await update.message.reply_text("🔒 [حذف محتوى]\nهات باسورد المسؤول الأول:")
     return
 
   current_state = user_data.get("state")
 
-  if current_state in ["AUTH_PASSWORD", "AUTH_OPTION", "AUTH_DELETE"]:
+  if current_state in ["AUTH_PASSWORD", "AUTH_BOOK_PASSWORD", "AUTH_DELETE"]:
     if text == ADMIN_PASSWORD:
       if current_state == "AUTH_PASSWORD":
         user_data["state"] = "WAITING_WEEK_NAME"
         await update.message.reply_text(
             "تمام ✅. اكتب اسم الأسبوع (مثال: الاسبوع الاول):"
         )
-      elif current_state == "AUTH_OPTION":
-        user_data["state"] = "WAITING_OPTION_NAME"
-        await update.message.reply_text("تمام ✅. اكتب اسم القسم الجديد:")
+      elif current_state == "AUTH_BOOK_PASSWORD":
+        user_data["state"] = "WAITING_BOOK_NAME"
+        await update.message.reply_text(
+            "تمام ✅. اكتب اسم الكتاب الجديد الذي تريد إضافته:"
+        )
       elif current_state == "AUTH_DELETE":
         user_data["state"] = "WAITING_DELETE_WEEK"
         weeks = list(data["sections"]["محاضرات"].get("lectures", {}).keys())
@@ -264,27 +310,56 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       )
     return
 
-  if current_state == "WAITING_OPTION_NAME":
-    user_data["temp_option_name"] = text
-    user_data["state"] = "WAITING_OPTION_CMD"
-    await update.message.reply_text("اكتب اسم الزرار الذي سيظهر بالأسفل:")
-    return
-
-  if current_state == "WAITING_OPTION_CMD":
-    btn_text = text
-    opt_name = user_data.get("temp_option_name")
-    sec_key = "custom_" + str(len(data["sections"]) + 1)
-    data["sections"][sec_key] = {"title": opt_name, "lectures": {}}
-    if "custom_buttons" not in data:
-      data["custom_buttons"] = {}
-    data["custom_buttons"][btn_text] = sec_key
-    save_data(data)
-    user_data.clear()
+  # دورة إضافة كتاب جديد (اسم ثم ملف)
+  if current_state == "WAITING_BOOK_NAME":
+    if not text:
+      await update.message.reply_text("من فضلك اكتب اسم الكتاب بشكل صحيح.")
+      return
+    user_data["temp_book_name"] = text
+    user_data["state"] = "WAITING_BOOK_FILE"
     await update.message.reply_text(
-        f"🎉 تم إضافة القسم ({opt_name}) بنجاح!",
+        f"سجلنا اسم الكتاب: ({text}) 📖\nالآن ابعت **ملف الكتاب** (بي دي إف أو"
+        " مستند أو صوتي):",
         reply_markup=get_main_reply_keyboard(),
     )
     return
+
+  if current_state == "WAITING_BOOK_FILE":
+    file_id = None
+    file_type = None
+
+    if update.message.audio:
+      file_id = update.message.audio.file_id
+      file_type = "audio"
+    elif update.message.voice:
+      file_id = update.message.voice.file_id
+      file_type = "voice"
+    elif update.message.document:
+      file_id = update.message.document.file_id
+      file_type = "document"
+
+    if file_id:
+      book_name = user_data.get("temp_book_name")
+      if "items" not in data["sections"]["كتب"]:
+        data["sections"]["كتب"]["items"] = []
+
+      data["sections"]["كتب"]["items"].append(
+          {"name": book_name, "file_id": file_id, "file_type": file_type}
+      )
+      save_data(data)
+      user_data.clear()
+
+      await update.message.reply_text(
+          f"📚 تم حفظ الكتاب ({book_name}) بنجاح!\nاضغط الآن على زر **📚 كتب طب"
+          " الأسنان** لتجد كتابك ظهر في القائمة بالأسفل 🚀",
+          reply_markup=get_main_reply_keyboard(),
+      )
+      return
+    else:
+      await update.message.reply_text(
+          "⚠️ من فضلك ابعت ملف الكتاب (مستند أو ملف صوتي) لكي نتمكن من حفظه."
+      )
+      return
 
   if current_state == "WAITING_DELETE_WEEK":
     target_week = text
@@ -362,7 +437,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data["state"] = "WAITING_FILES"
     await update.message.reply_text(
         f"اخترت يوم: {text} 🗓️\nابعت الملفات أو الفويس (تقدر تبعت أكتر من ملف"
-        " مع بعض دفعة واحدة، ولو حابب ابعت اسم المحاضرة في رسالة بعدها لوحدة):",
+        " مع بعض دفعة واحدة، وبعد ما تخلص ابعت اسم المحاضرة في رسالة):",
         reply_markup=get_main_reply_keyboard(),
     )
     return
@@ -394,7 +469,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       )
       return
     else:
-      # معالجة النص المرسل (اسم المحاضرة)
       lecture_name = text if text else user_data.get("temp_caption")
       if not lecture_name:
         if user_data.get("temp_files"):
