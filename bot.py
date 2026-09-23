@@ -63,7 +63,8 @@ def get_main_reply_keyboard():
   keyboard = [
       [KeyboardButton("📚 المحاضرات"), KeyboardButton("📚 كتب طب الأسنان")],
       [KeyboardButton("➕ ضيف محاضرة"), KeyboardButton("➕ ضيف كتاب")],
-      [KeyboardButton("🗑️ امسح محاضرة"), KeyboardButton("❌ خروج")],
+      [KeyboardButton("🗑️ امسح محاضرة"), KeyboardButton("🗑️ امسح كتاب")],
+      [KeyboardButton("❌ خروج")],
   ]
 
   for btn_name in custom_buttons.keys():
@@ -221,7 +222,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           )
     return
 
-  # 2. قسم الكتب التفاعلي (عرض الكتب في أزرار أسفل الشاشة)
+  # 2. قسم الكتب التفاعلي
   if text == "📚 كتب طب الأسنان":
     user_data.clear()
     books_list = data["sections"]["كتب"].get("items", [])
@@ -279,12 +280,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if text in ["🗑️ امسح محاضرة", "/delete"]:
     user_data.clear()
     user_data["state"] = "AUTH_DELETE"
-    await update.message.reply_text("🔒 [حذف محتوى]\nهات باسورد المسؤول الأول:")
+    await update.message.reply_text("🔒 [حذف محاضرة]\nهات باسورد المسؤول الأول:")
+    return
+
+  if text == "🗑️ امسح كتاب":
+    user_data.clear()
+    user_data["state"] = "AUTH_DELETE_BOOK"
+    await update.message.reply_text("🔒 [حذف كتاب]\nهات باسورد المسؤول الأول:")
     return
 
   current_state = user_data.get("state")
 
-  if current_state in ["AUTH_PASSWORD", "AUTH_BOOK_PASSWORD", "AUTH_DELETE"]:
+  if current_state in [
+      "AUTH_PASSWORD",
+      "AUTH_BOOK_PASSWORD",
+      "AUTH_DELETE",
+      "AUTH_DELETE_BOOK",
+  ]:
     if text == ADMIN_PASSWORD:
       if current_state == "AUTH_PASSWORD":
         user_data["state"] = "WAITING_WEEK_NAME"
@@ -303,6 +315,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if weeks:
           msg += f"\nالأسابيع المتاحة: {', '.join(weeks)}"
         await update.message.reply_text(msg)
+      elif current_state == "AUTH_DELETE_BOOK":
+        user_data["state"] = "WAITING_DELETE_BOOK_NAME"
+        books_list = data["sections"]["كتب"].get("items", [])
+        book_names = [b.get("name") for b in books_list]
+        msg = "تمام ✅. اكتب اسم الكتاب الذي تريد مسحه:"
+        if book_names:
+          msg += f"\nالكتب المتاحة: {', '.join(book_names)}"
+        await update.message.reply_text(msg)
     else:
       user_data.clear()
       await update.message.reply_text(
@@ -310,7 +330,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       )
     return
 
-  # دورة إضافة كتاب جديد (اسم ثم ملف)
+  # دورة إضافة كتاب جديد
   if current_state == "WAITING_BOOK_NAME":
     if not text:
       await update.message.reply_text("من فضلك اكتب اسم الكتاب بشكل صحيح.")
@@ -360,6 +380,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           "⚠️ من فضلك ابعت ملف الكتاب (مستند أو ملف صوتي) لكي نتمكن من حفظه."
       )
       return
+
+  # دورة مسح كتاب
+  if current_state == "WAITING_DELETE_BOOK_NAME":
+    target_book_name = text
+    books_list = data["sections"]["كتب"].get("items", [])
+    updated_books = [b for b in books_list if b.get("name") != target_book_name]
+
+    if len(updated_books) < len(books_list):
+      data["sections"]["كتب"]["items"] = updated_books
+      save_data(data)
+      user_data.clear()
+      await update.message.reply_text(
+          f"🗑️ تم حذف الكتاب ({target_book_name}) بنجاح!",
+          reply_markup=get_main_reply_keyboard(),
+      )
+    else:
+      user_data.clear()
+      await update.message.reply_text(
+          f"⚠️ لم يتم العثور على كتاب بهذا الاسم ({target_book_name}).",
+          reply_markup=get_main_reply_keyboard(),
+      )
+    return
 
   if current_state == "WAITING_DELETE_WEEK":
     target_week = text
