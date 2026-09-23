@@ -339,14 +339,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if current_state == "WAITING_DELETE_TARGET":
     target_week = text
-    user_data.clear()
     lectures_sec = data["sections"]["محاضرات"].get("lectures", {})
 
     if target_week in lectures_sec:
+      days_in_week = list(lectures_sec[target_week].keys())
       del lectures_sec[target_week]
       save_data(data)
+      user_data.clear()
+      days_str = ", ".join(days_in_week) if days_in_week else "لا توجد أيام"
       await update.message.reply_text(
-          f"🗑️ تم مسح الأسبوع ({target_week}) بكل اللي فيه بنجاح!",
+          f"🗑️ تم مسح الأسبوع ({target_week}) بالكامل!\n🗓️ الأيام التي كانت"
+          f" موجودة وتم حذفها: [{days_str}] بنجاح.",
           reply_markup=get_main_reply_keyboard(),
       )
     else:
@@ -424,6 +427,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       file_id = update.message.document.file_id
       file_type = "document"
 
+    # لو المستخدم أرسل ملف ومعاه نص في نفس الرسالة (Caption)
+    if file_id and update.message.caption:
+      user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
+      lecture_name = update.message.caption.strip()
+      
+      # حفظ المحاضرة مباشرة لأن الاسم مدمج مع الملف
+      week_name = user_data.get("temp_week_name")
+      day_name = user_data.get("temp_day_name")
+      files_list = user_data.get("temp_files")
+
+      lectures_dict = data["sections"]["محاضرات"]["lectures"]
+      if week_name not in lectures_dict:
+        lectures_dict[week_name] = {}
+      if day_name not in lectures_dict[week_name]:
+        lectures_dict[week_name][day_name] = []
+
+      lectures_dict[week_name][day_name].append(
+          {"name": lecture_name, "files": files_list}
+      )
+      save_data(data)
+      user_data.clear()
+
+      await update.message.reply_text(
+          f"فل يا دكتور! اتضافت تمام مع الاسم بالملف:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة: **{lecture_name}** (عدد الملفات: {len(files_list)})\n\nاضغط على **📚 المحاضرات** من تحت عشان تشوف الشغل التمام!",
+          reply_markup=get_main_reply_keyboard(),
+          parse_mode="Markdown",
+      )
+      return
+
     if file_id:
       user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
       await update.message.reply_text(
@@ -439,8 +471,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-      user_data["temp_lecture_name"] = text
-      user_data["state"] = "WAITING_LECTURE_NAME_FINAL"
+      if not text:
+        await update.message.reply_text(
+            "⚠️ من فضلك اكتب اسم المحاضرة بشكل صحيح."
+        )
+        return
 
       lecture_name = text
       week_name = user_data.get("temp_week_name")
@@ -471,40 +506,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           parse_mode="Markdown",
       )
       return
-
-  if current_state == "WAITING_LECTURE_NAME_FINAL":
-    if not text:
-      await update.message.reply_text("يا ريت تكتب اسم المحاضرة بشكل مظبوط.")
-      return
-
-    lecture_name = text
-    week_name = user_data.get("temp_week_name")
-    day_name = user_data.get("temp_day_name")
-    files_list = user_data.get("temp_files")
-
-    lectures_dict = data["sections"]["محاضرات"]["lectures"]
-
-    if week_name not in lectures_dict:
-      lectures_dict[week_name] = {}
-
-    if day_name not in lectures_dict[week_name]:
-      lectures_dict[week_name][day_name] = []
-
-    lectures_dict[week_name][day_name].append(
-        {"name": lecture_name, "files": files_list}
-    )
-
-    save_data(data)
-    user_data.clear()
-
-    await update.message.reply_text(
-        f"زي الفل! تمت الإضافة بنجاح:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم:"
-        f" **{day_name}**\n🎧 المحاضرة: **{lecture_name}**\n\nاضغط على زر **📚"
-        " المحاضرات** تحت واستعرض براحتك!",
-        reply_markup=get_main_reply_keyboard(),
-        parse_mode="Markdown",
-    )
-    return
 
 
 if __name__ == "__main__":
