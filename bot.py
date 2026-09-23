@@ -11,7 +11,6 @@ from telegram import (
 )
 from telegram.ext import (
     ApplicationBuilder,
-    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -69,7 +68,7 @@ def get_main_reply_keyboard():
 
   keyboard = [
       [KeyboardButton("📚 المحاضرات"), KeyboardButton("📚 كتب طب الأسنان")],
-      [KeyboardButton("➕ ضيف محاضرة"), KeyboardButton("➕ ضيف قسم جديد")],
+      [KeyboardButton("➕ ضيف محاضرة"), KeyboardButton("➕ ضيف كتاب")],
       [KeyboardButton("🗑️ امسح محاضرة"), KeyboardButton("❌ خروج")],
   ]
 
@@ -112,8 +111,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   text_msg = (
       "منور يا دكتور في بوت **Uni Helper** لطب أسنان جامعة الزقازيق الأهلية"
-      " (ZNU) 🦷🎓\n\nاضغط على **📚 المحاضرات** من الأزرار تحت عشان تختار الأسبوع"
-      " واليوم براحتك:"
+      " (ZNU) 🦷🎓\n\nاضغط على **📚 المحاضرات** أو **📚 كتب طب الأسنان** من الأزرار"
+      " تحت:"
   )
   await update.message.reply_text(
       text_msg, reply_markup=get_main_reply_keyboard(), parse_mode="Markdown"
@@ -139,7 +138,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 1. قائمة المحاضرات (تظهر الأسابيع في الأزرار السفلية)
+  # 1. قائمة المحاضرات
   if text == "📚 المحاضرات":
     user_data.clear()
     lectures_dict = data["sections"]["محاضرات"].get("lectures", {})
@@ -157,7 +156,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 2. عند الضغط على أسبوع معين من تحت، نظهر الأيام في الأزرار السفلية
+  # 2. الضغط على أسبوع معين
   if text.startswith("📅 "):
     week_name = text.replace("📅 ", "").strip()
     days_dict = (
@@ -181,7 +180,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 3. عند الضغط على اليوم من الأزرار السفلية
+  # 3. الضغط على اليوم
   if text.startswith("🗓️ يوم "):
     try:
       parts = text.replace("🗓️ يوم ", "").split(" (")
@@ -233,7 +232,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
   # 4. إضافة محاضرة
-  if text == "➕ ضيف محاضرة" or "اضافه محاضرة" in text or text == "/addlecture":
+  if text == "➕ ضيف محاضرة" or text == "/addlecture":
     user_data.clear()
     user_data["state"] = "AUTH_PASSWORD"
     await update.message.reply_text(
@@ -241,7 +240,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 5. عرض الكتب
+  # 5. إضافة كتاب جديد
+  if text == "➕ ضيف كتاب":
+    user_data.clear()
+    user_data["state"] = "AUTH_BOOK"
+    await update.message.reply_text(
+        "🔒 [إضافة كتاب جديد]\nهات الباسورد يا باشا عشان نكمل:"
+    )
+    return
+
+  # 6. عرض الكتب
   if text == "📚 كتب طب الأسنان":
     user_data.clear()
     books = data["sections"]["كتب"].get("items", [])
@@ -258,15 +266,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       )
     return
 
-  # 6. إضافة قسم جديد
-  if text == "➕ ضيف قسم جديد" or "اضف خيار" in text:
-    user_data.clear()
-    user_data["state"] = "AUTH_OPTION"
-    await update.message.reply_text(
-        "🔒 [إضافة قسم جديد]\nهات الباسورد يا باشا عشان نكمل:"
-    )
-    return
-
   # 7. حذف محاضرة
   if text == "🗑️ امسح محاضرة" or text == "/delete":
     user_data.clear()
@@ -278,7 +277,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   current_state = user_data.get("state")
 
-  if current_state in ["AUTH_PASSWORD", "AUTH_OPTION", "AUTH_DELETE"]:
+  if current_state in ["AUTH_PASSWORD", "AUTH_BOOK", "AUTH_DELETE"]:
     if text == ADMIN_PASSWORD:
       if current_state == "AUTH_PASSWORD":
         user_data["state"] = "WAITING_WEEK_NAME"
@@ -286,11 +285,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "تمام، الباسورد صح ✅.\n📅 اكتب اسم الأسبوع الأول (زي مثلاً:"
             " `الاسبوع الاول`):"
         )
-      elif current_state == "AUTH_OPTION":
-        user_data["state"] = "WAITING_OPTION_NAME"
+      elif current_state == "AUTH_BOOK":
+        user_data["state"] = "WAITING_BOOK_NAME"
         await update.message.reply_text(
-            "الباسورد مظبوط ✅.\nاكتب اسم القسم الجديد اللي عايزه (زي: سكشن"
-            " أناتومي):"
+            "الباسورد مظبوط ✅.\nاكتب اسم الكتاب الجديد اللي عايز تضيفه:"
         )
       elif current_state == "AUTH_DELETE":
         user_data["state"] = "WAITING_DELETE_WEEK"
@@ -309,30 +307,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       )
     return
 
-  if current_state == "WAITING_OPTION_NAME":
-    user_data["temp_option_name"] = text
-    user_data["state"] = "WAITING_OPTION_CMD"
-    await update.message.reply_text(
-        "تسلم! اكتب بقى اسم الزرار اللي هيظهر تحت عشان يفتح القسم ده:"
-    )
-    return
+  # حفظ الكتاب الجديد مباشرة
+  if current_state == "WAITING_BOOK_NAME":
+    book_name = text
+    if not book_name:
+      await update.message.reply_text("من فضلك اكتب اسم الكتاب بشكل صحيح.")
+      return
 
-  if current_state == "WAITING_OPTION_CMD":
-    btn_text = text
-    opt_name = user_data.get("temp_option_name")
-    sec_key = "custom_" + str(len(data["sections"]) + 1)
+    if "items" not in data["sections"]["كتب"]:
+      data["sections"]["كتب"]["items"] = []
 
-    data["sections"][sec_key] = {"title": opt_name, "lectures": {}}
-    if "custom_buttons" not in data:
-      data["custom_buttons"] = {}
-    data["custom_buttons"][btn_text] = sec_key
-
+    data["sections"]["كتب"]["items"].append(book_name)
     save_data(data)
     user_data.clear()
 
     await update.message.reply_text(
-        f"🎉 قشطة! عملنا القسم ({opt_name}) والزرار ({btn_text}) اتضاف تحت زي"
-        " الفل 🚀",
+        f"📚 تم إضافة الكتاب ({book_name}) بنجاح وهتلاقيه ظاهر في قائمة كتب طب"
+        " الأسنان 🚀",
         reply_markup=get_main_reply_keyboard(),
     )
     return
@@ -347,7 +338,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       days = list(lectures_sec[target_week].keys())
       days_str = ", ".join(days) if days else "لا توجد أيام مسجلة"
       await update.message.reply_text(
-          f"تمام، الأسبوع ({target_week}) موجود.\nالأيام المتاحة فيه حالياً: [{days_str}]\n\nاكتب اسم **اليوم** الذي تريد حذفه فقط:"
+          f"تمام، الأسبوع ({target_week}) موجود.\nالأيام المتاحة فيه حالياً:"
+          f" [{days_str}]\n\nاكتب اسم **اليوم** الذي تريد حذفه فقط:"
       )
     else:
       await update.message.reply_text(
@@ -366,18 +358,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       save_data(data)
       user_data.clear()
       await update.message.reply_text(
-          f"🗑️ تم حذف يوم ({target_day}) من ({target_week}) بنجاح تام وباقي الأيام سليمة!",
+          f"🗑️ تم حذف يوم ({target_day}) من ({target_week}) بنجاح تام وباقي"
+          " الأيام سليمة!",
           reply_markup=get_main_reply_keyboard(),
       )
     else:
       user_data.clear()
       await update.message.reply_text(
-          f"⚠️ اليوم ({target_day}) غير موجود في الأسبوع ({target_week}) أو حدث خطأ بالكتابة.",
+          f"⚠️ اليوم ({target_day}) غير موجود في الأسبوع ({target_week}) أو حدث"
+          " خطأ بالكتابة.",
           reply_markup=get_main_reply_keyboard(),
       )
     return
 
-  # ----------------- دورة الإضافة بالترتيب -----------------
+  # ----------------- دورة إضافة المحاضرة -----------------
   if current_state == "WAITING_WEEK_NAME":
     if not text:
       await update.message.reply_text("يا ريت تكتب اسم الأسبوع صح لو سمحت.")
@@ -423,7 +417,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data["state"] = "WAITING_FILES"
 
     await update.message.reply_text(
-        f"عاش يا دكتور، اخترت يوم: **{text}** 🗓️\n📁 ابعت دلوقتي الملفات أو الفويس (ولو معاها الاسم في الكابتشن هيتفظي لوحده، أو ابعت الملفات وبعدين اكتب اسم المحاضرة في رسالة لوحدها):",
+        f"عاش يا دكتور، اخترت يوم: **{text}** 🗓️\n📁 ابعت الملفات أو الفويس (ولو"
+        " معاه الاسم في الكابتشن هيتفظي لوحده، أو ابعت الملفات وبعدين اكتب اسم"
+        " المحاضرة في رسالة لوحدها):",
         reply_markup=get_main_reply_keyboard(),
         parse_mode="Markdown",
     )
@@ -443,11 +439,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       file_id = update.message.document.file_id
       file_type = "document"
 
-    # لو أرسل ملف ومعاه Caption (نص مرفق أو اسم مرفق من التحويل)
     if file_id and update.message.caption:
       file_caption = update.message.caption.strip()
       user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
-      
+
       week_name = user_data.get("temp_week_name")
       day_name = user_data.get("temp_day_name")
       files_list = user_data.get("temp_files")
@@ -465,21 +460,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       user_data.clear()
 
       await update.message.reply_text(
-          f"فل يا دكتور! اتضافت تمام واخدنا اسم المحاضرة من الكابتشن:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة: **{file_caption}** (عدد الملفات: {len(files_list)})\n\nاضغط على **📚 المحاضرات** من تحت عشان تشوف الشغل التمام!",
+          f"فل يا دكتور! اتضافت تمام واخدنا اسم المحاضرة من الكابتشن:\n📂"
+          f" الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة:"
+          f" **{file_caption}** (عدد الملفات: {len(files_list)})\n\nاضغط على"
+          " **📚 المحاضرات** من تحت عشان تشوف الشغل التمام!",
           reply_markup=get_main_reply_keyboard(),
           parse_mode="Markdown",
       )
       return
 
-    # لو أرسل ملف فقط من غير كابتشن
     if file_id:
       user_data["temp_files"].append({"file_id": file_id, "file_type": file_type})
       await update.message.reply_text(
-          f"📥 تم استلام الملف بنجاح (إجمالي الملفات لحد دلوقتي: {len(user_data['temp_files'])}).\n\nلو معاك ملفات تانية ابعتها، ولو خلصت **اكتب اسم المحاضرة في رسالة لوحدها** واضغط إرسال علطول:"
+          "📥 تم استلام الملف بنجاح (إجمالي الملفات لحد دلوقتي:"
+          f" {len(user_data['temp_files'])}).\n\nلو معاك ملفات تانية ابعتها، ولو"
+          " خلصت **اكتب اسم المحاضرة في رسالة لوحدها** واضغط إرسال علطول:"
       )
       return
 
-    # لو كتب نص (اسم المحاضرة) بعد إرسال الملفات
     if text:
       if not user_data.get("temp_files"):
         await update.message.reply_text(
@@ -508,7 +506,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       user_data.clear()
 
       await update.message.reply_text(
-          f"زي الفل! تمت الإضافة بنجاح:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم: **{day_name}**\n🎧 المحاضرة: **{lecture_name}** (عدد الملفات: {len(files_list)})\n\nاضغط على زر **📚 المحاضرات** تحت واستعرض براحتك!",
+          f"زي الفل! تمت الإضافة بنجاح:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم:"
+          f" **{day_name}**\n🎧 المحاضرة: **{lecture_name}** (عدد الملفات:"
+          f" {len(files_list)})\n\nاضغط على زر **📚 المحاضرات** تحت واستعرض"
+          " براحتك!",
           reply_markup=get_main_reply_keyboard(),
           parse_mode="Markdown",
       )
@@ -516,7 +517,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 if __name__ == "__main__":
-  # 1. تشغيل سيرفر الويب في خيط فرعي (Background Thread) ليبقى البورت مفتوحاً لرندر
   port = int(os.environ.get("PORT", 8080))
   web_thread = threading.Thread(
       target=lambda: app.run(host="0.0.0.0", port=port)
@@ -525,7 +525,6 @@ if __name__ == "__main__":
   web_thread.start()
   print(f"سيرفر الويب شغال على البورت {port}...")
 
-  # 2. تشغيل بوت تيليجرام في الخيط الأساسي (Main Thread) بالتوكن الجديد
   TOKEN = "8631135838:AAFLimmQV9KLE5U7wMVuuYPmz9vnlG9U2ww"
   app_bot = ApplicationBuilder().token(TOKEN).build()
 
@@ -534,5 +533,5 @@ if __name__ == "__main__":
       MessageHandler(filters.ALL & ~filters.COMMAND, handle_message)
   )
 
-  print("Uni Helper Bot يعمل الآن في الخيط الأساسي بالتوكن الجديد...")
+  print("Uni Helper Bot يعمل الآن في الخيط الأساسي بالسرعة القصوى...")
   app_bot.run_polling()
