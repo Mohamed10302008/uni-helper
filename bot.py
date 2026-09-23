@@ -107,6 +107,7 @@ def get_days_reply_keyboard(week_name):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  # مسح أي حالة سابقة معلقة فوراً عند بدء البوت
   context.user_data.clear()
 
   text_msg = (
