@@ -1,0 +1,58 @@
+{
+    "sections": {
+        "محاضرات": {
+            "title": "المحاضرات",
+            "lectures": {
+                "": [
+                    {
+                        "name": "الاسبوع الاول",
+                        "file_id": "CQACAgQAAxkBAAMjarOkj7SUhkcYRbH4Wv0-TORvj1MAAv4gAAKXu5FRAuDfC_WTx_o9BA",
+                        "file_type": "audio"
+                    },
+                    {
+                        "name": "الاسبوع الاول",
+                        "file_id": "CQACAgQAAxkBAAMjarOkj7SUhkcYRbH4Wv0-TORvj1MAAv4gAAKXu5FRAuDfC_WTx_o9BA",
+                        "file_type": "audio"
+                    },
+                    {
+                        "name": "الاسبوع الاةل",
+                        "file_id": "CQACAgQAAxkBAAMjarOkj7SUhkcYRbH4Wv0-TORvj1MAAv4gAAKXu5FRAuDfC_WTx_o9BA",
+                        "file_type": "audio"
+                    },
+                    {
+                        "name": "الاسبوع الاول",
+                        "file_id": "CQACAgQAAxkBAAMjarOkj7SUhkcYRbH4Wv0-TORvj1MAAv4gAAKXu5FRAuDfC_WTx_o9BA",
+                        "file_type": "audio"
+                    },
+                    {
+                        "name": "الاسبوع الاول",
+                        "file_id": "CQACAgQAAxkBAAMjarOkj7SUhkcYRbH4Wv0-TORvj1MAAv4gAAKXu5FRAuDfC_WTx_o9BA",
+                        "file_type": "audio"
+                    }
+                ],
+                "الاسبوع الاول": {
+                    "الثلاثاء": [
+                        {
+                            "name": "Anatomy",
+                            "files": [
+                                {
+                                    "file_id": "CQACAgQAAxkBAAMjarOkj7SUhkcYRbH4Wv0-TORvj1MAAv4gAAKXu5FRAuDfC_WTx_o9BA",
+                                    "file_type": "audio"
+                                },
+                                {
+                                    "file_id": "CQACAgQAAxkBAAMkarOkj8ZuNDi-mdh1LB0lTj5sEDAAAsIhAALPbphRGivHW42dMK89BA",
+                                    "file_type": "audio"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        "كتب": {
+            "title": "الكتب",
+            "items": []
+        }
+    },
+    "custom_buttons": {}
+}
