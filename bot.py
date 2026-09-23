@@ -1,6 +1,6 @@
 import json
 import os
-from threading import Thread
+import threading
 from flask import Flask
 from telegram import (
     InlineKeyboardButton,
@@ -18,7 +18,7 @@ from telegram.ext import (
     filters,
 )
 
-# --- سيرفر الويب المصغر عشان رندر يشتغل مجاني وما يديش خطأ بورت ---
+# --- سيرفر الويب الأساسي عشان رندر يفتح البورت وما يديش خطأ Time Out ---
 app = Flask("")
 
 
@@ -26,15 +26,6 @@ app = Flask("")
 def home():
   return "Uni Helper Bot is alive and running!"
 
-
-def run_web():
-  port = int(os.environ.get("PORT", 8080))
-  app.run(host="0.0.0.0", port=port)
-
-
-t = Thread(target=run_web)
-t.start()
-# -------------------------------------------------------------
 
 ADMIN_PASSWORD = "15309"
 DATA_FILE = "znu_dental_data.json"
@@ -472,7 +463,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       user_data.clear()
 
       await update.message.reply_text(
-          f"10فل يا دكتور! اتضافت تمام:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم:"
+          f"فل يا دكتور! اتضافت تمام:\n📂 الأسبوع: **{week_name}**\n🗓️ اليوم:"
           f" **{day_name}**\n🎧 المحاضرة: **{lecture_name}** (عدد الملفات:"
           f" {len(files_list)})\n\nاضغط على **📚 المحاضرات** من تحت عشان تشوف"
           " الشغل التمام!",
@@ -516,9 +507,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
 
-def main():
+# دالة تشغيل بوت تيليجرام في الخلفية
+def run_telegram_bot():
   TOKEN = "8964990492:AAFy3kskRFG46huYcmCcUthpPdF4Tx_tvJw"
-
   app_bot = ApplicationBuilder().token(TOKEN).build()
 
   app_bot.add_handler(CommandHandler("start", start))
@@ -526,9 +517,16 @@ def main():
       MessageHandler(filters.ALL & ~filters.COMMAND, handle_message)
   )
 
-  print("Uni Helper شغال زي الصاروخ على Render ومع Flask تمام...")
+  print("Uni Helper شغال في الخلفية زي الصاروخ...")
   app_bot.run_polling()
 
 
 if __name__ == "__main__":
-  main()
+  # 1. تشغيل البوت في خيط (Thread) مستقل عشان ما يعطلش سيرفر الويب
+  bot_thread = threading.Thread(target=run_telegram_bot)
+  bot_thread.daemon = True
+  bot_thread.start()
+
+  # 2. تشغيل سيرفر الويب على البورت الأساسي ليرضي رندر فوراً
+  port = int(os.environ.get("PORT", 8080))
+  app.run(host="0.0.0.0", port=port)
