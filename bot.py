@@ -11,7 +11,7 @@ from telegram.ext import (
     filters,
 )
 
-# --- سيرفر الويب الأساسي لضمان بقاء البورت مفتوحاً على رندر ---
+# --- سيرفر الويب الأساسي لضمان بقاء البورت مفتوحاً ---
 app = Flask("")
 
 
@@ -25,51 +25,72 @@ DATA_FILE = "znu_dental_data.json"
 
 
 def load_data():
-  if os.path.exists(DATA_FILE):
-    try:
-      with open(DATA_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-        if "sections" not in data or "custom_buttons" not in data:
-          return {
-              "sections": {
-                  "محاضرات": {"title": "المحاضرات", "lectures": {}},
-                  "كتب": {"title": "الكتب", "items": []},
-              },
-              "custom_buttons": {},
-          }
-        return data
-    except:
-      pass
-
-  return {
+  # الهيكل الأساسي الفارغ
+  default_data = {
       "sections": {
           "محاضرات": {"title": "المحاضرات", "lectures": {}},
           "كتب": {"title": "الكتب", "items": []},
+          "groups": {},
+          "youtube_doctors": {},
+          "ai_summaries": {},
       },
       "custom_buttons": {},
+      "users": [],
   }
+
+  if not os.path.exists(DATA_FILE):
+    return default_data
+
+  try:
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+      data = json.load(f)
+      # التأكد من وجود كافة الأقسام الرئيسية لعدم حدوث أخطاء
+      if "sections" not in data:
+        data["sections"] = default_data["sections"]
+      else:
+        for key in default_data["sections"]:
+          if key not in data["sections"]:
+            data["sections"][key] = default_data["sections"][key]
+
+      if "users" not in data:
+        data["users"] = []
+      if "custom_buttons" not in data:
+        data["custom_buttons"] = {}
+
+      return data
+  except Exception as e:
+    print(f"Error loading data: {e}")
+    return default_data
 
 
 def save_data(data):
-  with open(DATA_FILE, "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=4)
+  try:
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+      json.dump(data, f, ensure_ascii=False, indent=4)
+  except Exception as e:
+    print(f"Error saving data: {e}")
+
+
+# تسجيل المستخدمين الجدد وتتبع عددهم
+def register_user(user_id):
+  data = load_data()
+  if "users" not in data:
+    data["users"] = []
+  if user_id not in data["users"]:
+    data["users"].append(user_id)
+    save_data(data)
 
 
 # لوحة التحكم الرئيسية
 def get_main_reply_keyboard():
-  data = load_data()
-  custom_buttons = data.get("custom_buttons", {})
-
   keyboard = [
       [KeyboardButton("📚 المحاضرات"), KeyboardButton("📚 كتب طب الأسنان")],
+      [KeyboardButton("🔗 أهم الجروبات"), KeyboardButton("🎥 أفضل دكاترة يوتيوب")],
+      [KeyboardButton("🤖 تلخيصات AI"), KeyboardButton("✍️ امتحن نفسك (AI)")],
       [KeyboardButton("➕ ضيف محاضرة"), KeyboardButton("➕ ضيف كتاب")],
       [KeyboardButton("🗑️ امسح محاضرة"), KeyboardButton("🗑️ امسح كتاب")],
-      [KeyboardButton("❌ خروج")],
+      [KeyboardButton("⚙️ لوحة الأدمن والإحصائيات"), KeyboardButton("❌ خروج")],
   ]
-
-  for btn_name in custom_buttons.keys():
-    keyboard.insert(0, [KeyboardButton(btn_name)])
-
   return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
@@ -115,7 +136,35 @@ def get_books_reply_keyboard():
   return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
+# لوحة قائمة دكاترة اليوتيوب في الأزرار السفلية
+def get_yt_reply_keyboard():
+  data = load_data()
+  yt_doctors = data["sections"].get("youtube_doctors", {})
+
+  keyboard = []
+  for subject_name in yt_doctors.keys():
+    keyboard.append([KeyboardButton(f"🎓 دكتور: {subject_name}")])
+
+  keyboard.append([KeyboardButton("🔙 رجوع للقائمة الرئيسية")])
+  return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+# لوحة قائمة تلخيصات AI في الأزرار السفلية
+def get_ai_reply_keyboard():
+  data = load_data()
+  ai_summaries = data["sections"].get("ai_summaries", {})
+
+  keyboard = []
+  for subject_name in ai_summaries.keys():
+    keyboard.append([KeyboardButton(f"🤖 تلخيص: {subject_name}")])
+
+  keyboard.append([KeyboardButton("🔙 رجوع للقائمة الرئيسية")])
+  return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  user_id = update.effective_user.id
+  register_user(user_id)
   context.user_data.clear()
   text_msg = (
       "منور يا دكتور في بوت **Uni Helper** لطب أسنان جامعة الزقازيق الأهلية"
@@ -127,6 +176,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  user_id = update.effective_user.id
+  register_user(user_id)
+
   user_data = context.user_data
   text = update.message.text.strip() if update.message.text else ""
   data = load_data()
@@ -262,7 +314,128 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       await update.message.reply_text("⚠️ عذراً، لم يتم العثور على هذا الكتاب.")
     return
 
-  # 3. الأوامر والإدارة
+  # 3. قسم أهم الجروبات
+  if text == "🔗 أهم الجروبات":
+    user_data.clear()
+    groups = data["sections"].get("groups", {})
+    if not groups:
+      await update.message.reply_text(
+          "🔗 مفيش جروبات مضافة حالياً يا دكتور.\n(يمكن للأدمن إضافتها من لوحة"
+          " التحكم).",
+          reply_markup=get_main_reply_keyboard(),
+      )
+      return
+
+    msg = "🔗 **أهم الجروبات والروابط الرسمية للدفعة:**\n\n"
+    for g_name, g_link in groups.items():
+      msg += f"• [{g_name}]({g_link})\n"
+    await update.message.reply_text(
+        msg, reply_markup=get_main_reply_keyboard(), parse_mode="Markdown"
+    )
+    return
+
+  # 4. قسم أفضل دكاترة يوتيوب (تفاعلي بالأزرار)
+  if text == "🎥 أفضل دكاترة يوتيوب":
+    user_data.clear()
+    yt_doctors = data["sections"].get("youtube_doctors", {})
+    if not yt_doctors:
+      await update.message.reply_text(
+          "🎥 **أفضل قنوات وشروحات دكاترة الأسنان على اليوتيوب:**\n\nلسه مفيش"
+          " مواد أو شروحات مضافة حالياً يا دكتور.",
+          reply_markup=get_main_reply_keyboard(),
+      )
+      return
+    await update.message.reply_text(
+        "🎥 **اختر المادة أو الشرح من الأزرار بالأسفل لتظهر لك الروابط 👇**",
+        reply_markup=get_yt_reply_keyboard(),
+    )
+    return
+
+  if text.startswith("🎓 دكتور: "):
+    subject_name = text.replace("🎓 دكتور: ", "").strip()
+    yt_doctors = data["sections"].get("youtube_doctors", {})
+    yt_link = yt_doctors.get(subject_name)
+
+    if yt_link:
+      await update.message.reply_text(
+          f"🎥 **شرح مادة: {subject_name}**\n\n🔗 [اضغط هنا لمشاهدة المقطع"
+          f"]({yt_link})",
+          parse_mode="Markdown",
+          reply_markup=get_yt_reply_keyboard(),
+      )
+    else:
+      await update.message.reply_text("⚠️ عذراً، لم يتم العثور على هذا الشرح.")
+    return
+
+  # 5. قسم تلخيصات AI (تفاعلي بالأزرار)
+  if text == "🤖 تلخيصات AI":
+    user_data.clear()
+    ai_summaries = data["sections"].get("ai_summaries", {})
+    if not ai_summaries:
+      await update.message.reply_text(
+          "🤖 **قسم تلخيصات الذكاء الاصطناعي:**\n\nلسه مفيش تلخيصات مضافة من"
+          " الإدارة حالياً يا دكتور.",
+          reply_markup=get_main_reply_keyboard(),
+      )
+      return
+
+    await update.message.reply_text(
+        "🤖 **اختر التلخيص أو المادة من الأزرار بالأسفل ليتم إرسال الملف فوراً"
+        " 👇**",
+        reply_markup=get_ai_reply_keyboard(),
+    )
+    return
+
+  if text.startswith("🤖 تلخيص: "):
+    subject_name = text.replace("🤖 تلخيص: ", "").strip()
+    ai_summaries = data["sections"].get("ai_summaries", {})
+    target_summary = ai_summaries.get(subject_name)
+
+    if target_summary:
+      await update.message.reply_text(
+          f"📄 **تلخيص مادة/موضوع: {subject_name}**"
+      )
+      f_id = target_summary.get("file_id")
+      f_type = target_summary.get("file_type")
+      if f_type == "audio":
+        await context.bot.send_audio(
+            chat_id=update.message.chat_id,
+            audio=f_id,
+            reply_markup=get_ai_reply_keyboard(),
+        )
+      elif f_type == "voice":
+        await context.bot.send_voice(
+            chat_id=update.message.chat_id,
+            voice=f_id,
+            reply_markup=get_ai_reply_keyboard(),
+        )
+      else:
+        await context.bot.send_document(
+            chat_id=update.message.chat_id,
+            document=f_id,
+            reply_markup=get_ai_reply_keyboard(),
+        )
+    else:
+      await update.message.reply_text("⚠️ عذراً، لم يتم العثور على هذا التلخيص.")
+    return
+
+  # 6. قسم امتحن نفسك AI (مش شغال حاليا)
+  if text == "✍️ امتحن نفسك (AI)":
+    user_data.clear()
+    await update.message.reply_text(
+        "مش شغال حاليا", reply_markup=get_main_reply_keyboard()
+    )
+    return
+
+  # 7. الأوامر والإدارة ولوحة التحكم
+  if text == "⚙️ لوحة الأدمن والإحصائيات":
+    user_data.clear()
+    user_data["state"] = "AUTH_ADMIN_PANEL"
+    await update.message.reply_text(
+        "🔒 [لوحة تحكم المسؤول]\nهات باسورد المسؤول الأول:"
+    )
+    return
+
   if text in ["➕ ضيف محاضرة", "اضافه محاضرة"] or text == "/addlecture":
     user_data.clear()
     user_data["state"] = "AUTH_PASSWORD"
@@ -296,6 +469,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       "AUTH_BOOK_PASSWORD",
       "AUTH_DELETE",
       "AUTH_DELETE_BOOK",
+      "AUTH_ADMIN_PANEL",
+      "AUTH_BROADCAST",
+      "AUTH_ADD_GROUP",
+      "AUTH_ADD_YT",
+      "AUTH_ADD_AI",
   ]:
     if text == ADMIN_PASSWORD:
       if current_state == "AUTH_PASSWORD":
@@ -323,11 +501,199 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if book_names:
           msg += f"\nالكتب المتاحة: {', '.join(book_names)}"
         await update.message.reply_text(msg)
+      elif current_state == "AUTH_ADMIN_PANEL":
+        users_count = len(data.get("users", []))
+        user_data.clear()
+        keyboard = [
+            [KeyboardButton("📢 إرسال إعلان عام (Broadcast)")],
+            [
+                KeyboardButton("➕ إضافة جروب مهم"),
+                KeyboardButton("🎥 إضافة شرح يوتيوب"),
+            ],
+            [KeyboardButton("🤖 إضافة تلخيص AI")],
+            [KeyboardButton("🔙 رجوع للقائمة الرئيسية")],
+        ]
+        await update.message.reply_text(
+            f"⚙️ **لوحة التحكم والإحصائيات:**\n\n👥 إجمالي عدد المستخدمين للبوت:"
+            f" `{users_count}` طالب.\n\nاختر العملية المطلوبة من الأزرار بالأسفل:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+            parse_mode="Markdown",
+        )
+      elif current_state == "AUTH_BROADCAST":
+        user_data["state"] = "WAITING_BROADCAST_MESSAGE"
+        await update.message.reply_text(
+            "📢 أرسل الآن نص أو ملف الإعلان المراد إرساله للطلاب مباشرة:"
+        )
+      elif current_state == "AUTH_ADD_GROUP":
+        user_data["state"] = "WAITING_GROUP_LINK"
+        await update.message.reply_text("🔗 أرسل الآن **رابط الجروب**:")
+      elif current_state == "AUTH_ADD_YT":
+        user_data["state"] = "WAITING_YT_LINK"
+        await update.message.reply_text(
+            "🔗 أرسل الآن **رابط مقطع أو نص يوتيوب الشرح**:"
+        )
+      elif current_state == "AUTH_ADD_AI":
+        user_data["state"] = "WAITING_AI_FILE"
+        await update.message.reply_text(
+            "🤖 أرسل الآن **ملف التلخيص أو المقطع الصوتي** الخاص بـ AI:"
+        )
     else:
       user_data.clear()
       await update.message.reply_text(
           "❌ الباسورد غلط.", reply_markup=get_main_reply_keyboard()
       )
+    return
+
+  # اختصارات لوحة تحكم الأدمن
+  if text == "📢 إرسال إعلان عام (Broadcast)":
+    user_data.clear()
+    user_data["state"] = "AUTH_BROADCAST"
+    await update.message.reply_text(
+        "🔒 [إرسال إعلان عام]\nهات باسورد المسؤول الأول:"
+    )
+    return
+
+  if text == "➕ إضافة جروب مهم":
+    user_data.clear()
+    user_data["state"] = "AUTH_ADD_GROUP"
+    await update.message.reply_text("🔒 [إضافة جروب]\nهات باسورد المسؤول الأول:")
+    return
+
+  if text == "🎥 إضافة شرح يوتيوب":
+    user_data.clear()
+    user_data["state"] = "AUTH_ADD_YT"
+    await update.message.reply_text(
+        "🔒 [إضافة شرح يوتيوب]\nهات باسورد المسؤول الأول:"
+    )
+    return
+
+  if text == "🤖 إضافة تلخيص AI":
+    user_data.clear()
+    user_data["state"] = "AUTH_ADD_AI"
+    await update.message.reply_text(
+        "🔒 [إضافة تلخيص AI]\nهات باسورد المسؤول الأول:"
+    )
+    return
+
+  # دورة الإذاعة العامة (Broadcast)
+  if current_state == "WAITING_BROADCAST_MESSAGE":
+    users = data.get("users", [])
+    success_count = 0
+    await update.message.reply_text("⏳ جاري إرسال الرسالة لجميع المستخدمين...")
+    for uid in users:
+      try:
+        await context.bot.send_message(
+            chat_id=uid, text=text, parse_mode="Markdown"
+        )
+        success_count += 1
+      except Exception:
+        pass
+    user_data.clear()
+    await update.message.reply_text(
+        f"✅ تم إرسال الرسالة بنجاح إلى `{success_count}` مستخدماً من إجمالي"
+        f" `{len(users)}`.",
+        reply_markup=get_main_reply_keyboard(),
+    )
+    return
+
+  # دورة إضافة الجروب
+  if current_state == "WAITING_GROUP_LINK":
+    user_data["temp_group_link"] = text
+    user_data["state"] = "WAITING_GROUP_NAME"
+    await update.message.reply_text(
+        "📝 ممتاز، الآن أرسل **اسم الجروب** (مثال: جروب الدفعة الرسمي):"
+    )
+    return
+
+  if current_state == "WAITING_GROUP_NAME":
+    g_link = user_data.get("temp_group_link")
+    g_name = text
+    if "groups" not in data["sections"]:
+      data["sections"]["groups"] = {}
+    data["sections"]["groups"][g_name] = g_link
+    save_data(data)
+    user_data.clear()
+    await update.message.reply_text(
+        f"✅ تم إضافة الجروب **{g_name}** بنجاح وتخزينه في القاعدة!",
+        reply_markup=get_main_reply_keyboard(),
+    )
+    return
+
+  # دورة إضافة شرح يوتيوب جديد
+  if current_state == "WAITING_YT_LINK":
+    user_data["temp_yt_link"] = text
+    user_data["state"] = "WAITING_YT_SUBJECT_NAME"
+    await update.message.reply_text(
+        "📝 ممتاز، الآن أرسل **اسم المادة** الخاصة بالشرح (مثال: Anatomy - محاضرة"
+        " 1):"
+    )
+    return
+
+  if current_state == "WAITING_YT_SUBJECT_NAME":
+    yt_link = user_data.get("temp_yt_link")
+    subject_name = text
+    if "youtube_doctors" not in data["sections"]:
+      data["sections"]["youtube_doctors"] = {}
+    data["sections"]["youtube_doctors"][subject_name] = yt_link
+    save_data(data)
+    user_data.clear()
+    await update.message.reply_text(
+        f"✅ تم حفظ شرح مادة **{subject_name}** بنجاح، وظهرت في قائمة أفضل دكاترة"
+        " اليوتيوب بالأزرار! 🎥🚀",
+        reply_markup=get_main_reply_keyboard(),
+    )
+    return
+
+  # دورة إضافة تلخيص AI الجديد
+  if current_state == "WAITING_AI_FILE":
+    file_id = None
+    file_type = None
+
+    if update.message.audio:
+      file_id = update.message.audio.file_id
+      file_type = "audio"
+    elif update.message.voice:
+      file_id = update.message.voice.file_id
+      file_type = "voice"
+    elif update.message.document:
+      file_id = update.message.document.file_id
+      file_type = "document"
+
+    if file_id:
+      user_data["temp_ai_file_id"] = file_id
+      user_data["temp_ai_file_type"] = file_type
+      user_data["state"] = "WAITING_AI_SUBJECT_NAME"
+      await update.message.reply_text(
+          "📝 ممتاز، استلمنا الملف. الآن أرسل **اسم المادة** أو عنوان التلخيص"
+          " (مثال: Histology - Summary 1):"
+      )
+      return
+    else:
+      await update.message.reply_text(
+          "⚠️ من فضلك أرسل ملف التلخيص أو المقطع الصوتي أولاً."
+      )
+      return
+
+  if current_state == "WAITING_AI_SUBJECT_NAME":
+    subject_name = text
+    f_id = user_data.get("temp_ai_file_id")
+    f_type = user_data.get("temp_ai_file_type")
+
+    if "ai_summaries" not in data["sections"]:
+      data["sections"]["ai_summaries"] = {}
+
+    data["sections"]["ai_summaries"][subject_name] = {
+        "file_id": f_id,
+        "file_type": f_type,
+    }
+    save_data(data)
+    user_data.clear()
+
+    await update.message.reply_text(
+        f"✅ تم حفظ تلخيص مادة **{subject_name}** بنجاح، وظهرت مباشرة في قسم"
+        " تلخيصات AI بالأزرار! 🤖🚀",
+        reply_markup=get_main_reply_keyboard(),
+    )
     return
 
   # دورة إضافة كتاب جديد
@@ -553,6 +919,7 @@ if __name__ == "__main__":
   web_thread.daemon = True
   web_thread.start()
 
+  # التوكن الأساسي الجديد للبوت الرسمي
   TOKEN = "8964990492:AAFy3kskRFG46huYcmCcUthpPdF4Tx_tvJw"
   app_bot = ApplicationBuilder().token(TOKEN).build()
   app_bot.add_handler(CommandHandler("start", start))
