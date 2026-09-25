@@ -922,7 +922,7 @@ if __name__ == "__main__":
   web_thread.start()
 
   # التوكن الأساسي الجديد للبوت الرسمي
-  TOKEN = "8964990492:AAFy3kskRFG46huYcmCcUthpPdF4Tx_tvJw"
+  TOKEN = "8964990492:AAHbOJ_dOeAkO80O-fZSemaRenz4bG93kFM"
   app_bot = ApplicationBuilder().token(TOKEN).build()
   app_bot.add_handler(CommandHandler("start", start))
   app_bot.add_handler(
