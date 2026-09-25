@@ -12,9 +12,9 @@ from telegram.ext import (
 )
 from supabase import create_client, Client
 
-# --- إعدادات Supabase السحابية ---
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+# --- إعدادات Supabase السحابية (مع القيم الافتراضية لضمان عدم حدوث كراش) ---
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://avpfzachffhwlsssihlg.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sb_publishable_8dlyeVdXJzariNrA_oOOoQ_KY1pVx3D")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- سيرفر الويب الأساسي لضمان بقاء البورت مفتوحاً ---
