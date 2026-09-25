@@ -1191,7 +1191,7 @@ async def quiz_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
       await query.message.edit_text(
           f"🏁 **انتهى امتحان anatomy (عملي) لصفحه 6 بنجاح!**\n\n"
           f"📊 درجاتك: `{score}` من `{total}`\n"
-          f"عاش يا دكتور الأبطال! 🦷🎓",
+          f"عاش يا دكتور ! 🦷🎓",
           parse_mode="Markdown"
       )
       user_data.clear()
