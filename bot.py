@@ -28,6 +28,9 @@ def home():
 
 ADMIN_PASSWORD = "15309"
 
+# سجل لتخزين آخر الرسائل المعالجة لمنع التكرار المزدوج نهائياً
+processed_updates = set()
+
 
 def load_data():
   default_data = {
@@ -162,6 +165,14 @@ def get_ai_reply_keyboard():
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  # منع التكرار بناءً على معرف الـ Update
+  update_id = update.update_id
+  if update_id in processed_updates:
+    return
+  processed_updates.add(update_id)
+  if len(processed_updates) > 100:
+    processed_updates.pop()
+
   user_id = update.effective_user.id
   register_user(user_id)
   context.user_data.clear()
@@ -175,6 +186,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  # مانع التكرار الذكي لمنع أي رد مزدوج
+  update_id = update.update_id
+  if update_id in processed_updates:
+    return
+  processed_updates.add(update_id)
+  if len(processed_updates) > 200:
+    processed_updates.pop()
+
   user_id = update.effective_user.id
   register_user(user_id)
 
@@ -182,7 +201,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   text = update.message.text.strip() if update.message.text else ""
   data = load_data()
 
-  # 1. زر الخروج والقوائم العامة (تعمل دائماً لإلغاء أي عملية سابقة)
+  # 1. زر الخروج والقوائم العامة
   if text in ["❌ خروج", "🔙 رجوع للقائمة الرئيسية"]:
     user_data.clear()
     await update.message.reply_text(
@@ -197,7 +216,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 2. فحص الحالات النشطة (State Machine) أولاً وبدقة لضمان سرعة الاستجابة من أول مرة
+  # 2. فحص الحالات النشطة (State Machine)
   current_state = user_data.get("state")
 
   if current_state:
@@ -883,14 +902,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if text == "➕ إضافة جروب مهم":
     user_data.clear()
     user_data["state"] = "AUTH_ADD_GROUP"
-    await update.message.reply_text("🔒 [إضافة جروب]\nهات باسورد المسؤول الأول:")
+    await update.message.reply_text("🔗 أرسل الآن **رابط الجروب**:")
     return
 
   if text == "🎥 إضافة شرح يوتيوب":
     user_data.clear()
     user_data["state"] = "AUTH_ADD_YT"
     await update.message.reply_text(
-        "🔒 [إضافة شرح يوتيوب]\nهات باسورد المسؤول الأول:"
+        "🎥 أرسل الآن **رابط الشرح**:"
     )
     return
 
@@ -898,7 +917,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data.clear()
     user_data["state"] = "AUTH_ADD_AI"
     await update.message.reply_text(
-        "🔒 [إضافة تلخيص AI]\nهات باسورد المسؤول الأول:"
+        "🤖 أرسل الآن **ملف التلخيص**:"
     )
     return
 
@@ -918,4 +937,5 @@ if __name__ == "__main__":
       MessageHandler(filters.ALL & ~filters.COMMAND, handle_message)
   )
 
-  app_bot.run_polling()
+  # تشغيل البوت مع تجاوز التحديثات القديمة لمنع تداخل الاستجابة
+  app_bot.run_polling(drop_pending_updates=True)
