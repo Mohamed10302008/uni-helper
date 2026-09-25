@@ -2,12 +2,19 @@ import json
 import os
 import threading
 from flask import Flask
-from telegram import KeyboardButton, ReplyKeyboardMarkup, Update
+from telegram import (
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
 )
 from supabase import create_client, Client
@@ -30,6 +37,220 @@ ADMIN_PASSWORD = "15309"
 
 # سجل لتخزين آخر الرسائل المعالجة لمنع التكرار المزدوج نهائياً
 processed_updates = set()
+
+# --- 30 سؤالاً تفصيلياً لـ anatomy (عملي) لصفحه 6 ---
+ANATOMY_P6_QUIZ = [
+    {
+        "question": "The skull protects the brain and the organs of special sense, and its bones are united by:",
+        "options": ["A) Cartilage exclusively", "B) Sutures", "C) Direct muscular fusion", "D) Fibrocartilage joints"],
+        "correct": 1
+    },
+    {
+        "question": "In the anatomical position, which two margins are in the same horizontal plane?",
+        "options": [
+            "A) Lower orbital margin and upper margin of external acoustic meatus",
+            "B) Upper orbital margin and lower margin of external acoustic meatus",
+            "C) Glabella and Inion",
+            "D) Nasion and Bregma"
+        ],
+        "correct": 0
+    },
+    {
+        "question": "The view of the skull seen from above is called:",
+        "options": ["A) Norma frontalis", "B) Norma verticalis", "C) Norma occipitalis", "D) Norma basalis"],
+        "correct": 1
+    },
+    {
+        "question": "Which bones share in forming the Norma verticalis?",
+        "options": [
+            "A) Frontal, Parietal, and Occipital bones",
+            "B) Temporal and Sphenoid only",
+            "C) Maxilla and Zygomatic",
+            "D) Mandible and Temporal"
+        ],
+        "correct": 0
+    },
+    {
+        "question": "The sagittal suture extends anteroposteriorly between which bones?",
+        "options": [
+            "A) Frontal and parietal bones",
+            "B) Two parietal bones",
+            "C) Parietal and occipital bones",
+            "D) Temporal and parietal bones"
+        ],
+        "correct": 1
+    },
+    {
+        "question": "The coronal suture lies transversely between which bones?",
+        "options": [
+            "A) Frontal and parietal bones",
+            "B) Parietal and occipital bones",
+            "C) Two parietal bones",
+            "D) Temporal and sphenoid"
+        ],
+        "correct": 0
+    },
+    {
+        "question": "The upper part of the lambdoid suture lies between:",
+        "options": [
+            "A) Frontal and parietal bones",
+            "B) Occipital and parietal bones",
+            "C) Temporal and zygomatic bones",
+            "D) Maxilla and nasal bones"
+        ],
+        "correct": 1
+    },
+    {
+        "question": "The point of meeting of the sagittal and coronal sutures is called:",
+        "options": ["A) Lambda", "B) Bregma", "C) Nasion", "D) Pterion"],
+        "correct": 1
+    },
+    {
+        "question": "The point of meeting of the sagittal and lambdoid sutures is called:",
+        "options": ["A) Bregma", "B) Lambda", "C) Glabella", "D) Inion"],
+        "correct": 1
+    },
+    {
+        "question": "Bregma and lambda indicate the positions of which structures in the fetus?",
+        "options": [
+            "A) Ossified tubercles",
+            "B) Anterior and posterior fontanels respectively",
+            "C) Emissary veins",
+            "D) Parietal eminences"
+        ],
+        "correct": 1
+    },
+    {
+        "question": "The parietal foramen transmits which of the following structures?",
+        "options": [
+            "A) Facial nerve",
+            "B) Emissary vein between scalp veins and superior sagittal sinus",
+            "C) Middle meningeal artery",
+            "D) Internal carotid artery"
+        ],
+        "correct": 1
+    },
+    {
+        "question": "The bones of the vault of the skull develop from:",
+        "options": ["A) Cartilage models", "B) Membranes that ossify to form bones", "C) Direct muscular ossification", "D) Endochondral ossification exclusively"],
+        "correct": 1
+    },
+    {
+        "question": "An area of the membrane that is still not ossified at birth where two or more sutures meet is called:",
+        "options": ["A) Foramen", "B) Fontanelle", "C) Fossa", "D) Sulcus"],
+        "correct": 1
+    },
+    {
+        "question": "The anterior fontanelle is present at the junction of:",
+        "options": [
+            "A) Sagittal and lambdoid sutures",
+            "B) Coronal and sagittal sutures",
+            "C) Metopic and coronal sutures",
+            "D) Squamous and lambdoid sutures"
+        ],
+        "correct": 1
+    },
+    {
+        "question": "Normally, the anterior fontanelle closes at what time after birth?",
+        "options": ["A) 1 to 2 months", "B) 6 months", "C) 18 to 24 months", "D) 3 to 4 years"],
+        "correct": 2
+    },
+    {
+        "question": "The posterior fontanelle is present at the junction of:",
+        "options": [
+            "A) Coronal and sagittal sutures",
+            "B) Sagittal and lambdoid sutures",
+            "C) Frontal and nasal sutures",
+            "D) Temporal and parietal sutures"
+        ],
+        "correct": 1
+    },
+    {
+        "question": "Normally, the posterior fontanelle closes at what time after birth?",
+        "options": ["A) 6 months", "B) 12 months", "C) 18 to 24 months", "D) At birth"],
+        "correct": 0
+    },
+    {
+        "question": "Clinically, the anterior fontanelle is known to exhibit which of the following signs?",
+        "options": [
+            "A) It bulges in case of increased intracranial tension",
+            "B) It sinks in cases of hypertension",
+            "C) It enlarges permanently after 5 years",
+            "D) It ossifies completely within the first week"
+        ],
+        "correct": 0
+    },
+    {
+        "question": "In case of dehydration, the anterior fontanelle appears:",
+        "options": ["A) Bulging", "B) Shrunken", "C) Hyperemic", "D) Pulsating excessively"],
+        "correct": 1
+    },
+    {
+        "question": "Which of the following is a clinical use of the anterior fontanelle?",
+        "options": [
+            "A) Estimating the newborn's age",
+            "B) Measuring direct blood pressure",
+            "C) Administering oral vaccines",
+            "D) Extracting cerebrospinal fluid safely"
+        ],
+        "correct": 0
+    },
+    {
+        "question": "The parietal eminence is located as a prominence on either side of:",
+        "options": ["A) The sagittal suture", "B) The coronal suture", "C) The lambdoid suture", "D) The squamous suture"],
+        "correct": 0
+    },
+    {
+        "question": "The skull bones are united by irregular lines called:",
+        "options": ["A) Fissures", "B) Sutures", "C) Canals", "D) Grooves"],
+        "correct": 1
+    },
+    {
+        "question": "Which fontanelle is diamond-shaped in the skull at birth?",
+        "options": ["A) Posterior fontanelle", "B) Anterior fontanelle", "C) Sphenoidal fontanelle", "D) Mastoid fontanelle"],
+        "correct": 1
+    },
+    {
+        "question": "Which fontanelle is triangular-shaped in the skull at birth?",
+        "options": ["A) Anterior fontanelle", "B) Posterior fontanelle", "C) Metopic fontanelle", "D) Sagittal fontanelle"],
+        "correct": 1
+    },
+    {
+        "question": "The interior of the skull is commonly referred to as:",
+        "options": ["A) The cranial cavity", "B) The temporal fossa", "C) The infratemporal fossa", "D) The orbital cavity"],
+        "correct": 0
+    },
+    {
+        "question": "The sagittal suture separates which two anatomical structures?",
+        "options": ["A) Frontal bones", "B) Two parietal bones", "C) Occipital and temporal bones", "D) Nasal bones"],
+        "correct": 1
+    },
+    {
+        "question": "The coronal suture separates the frontal bone from which other bone?",
+        "options": ["A) Occipital bone", "B) Parietal bone", "C) Temporal bone", "D) Sphenoid bone"],
+        "correct": 1
+    },
+    {
+        "question": "The lambdoid suture separates the parietal bones from:",
+        "options": ["A) The frontal bone", "B) The occipital bone", "C) The zygomatic bone", "D) The maxilla"],
+        "correct": 1
+    },
+    {
+        "question": "What is the primary function of the cranium regarding neural structures?",
+        "options": [
+            "A) To circulate cerebrospinal fluid",
+            "B) To protect the brain and special sense organs",
+            "C) To anchor facial expression muscles directly",
+            "D) To produce red blood cells"
+        ],
+        "correct": 1
+    },
+    {
+        "question": "Which suture runs in a transverse direction across the skull vault?",
+        "options": ["A) Sagittal suture", "B) Coronal suture", "C) Metopic suture", "D) Internasal suture"],
+        "correct": 1
+    }
+]
 
 
 def load_data():
@@ -101,6 +322,15 @@ def get_main_reply_keyboard():
   return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
+# لوحة قائمة الامتحانات التي تظهر بالأسفل
+def get_quiz_reply_keyboard():
+  keyboard = [
+      [KeyboardButton("📝 امتحان: anatomy (عملي) لصفحه 6")],
+      [KeyboardButton("🔙 رجوع للقائمة الرئيسية")],
+  ]
+  return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
 def get_weeks_reply_keyboard():
   data = load_data()
   lectures_dict = data["sections"]["محاضرات"].get("lectures", {})
@@ -165,7 +395,6 @@ def get_ai_reply_keyboard():
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  # منع التكرار بناءً على معرف الـ Update
   update_id = update.update_id
   if update_id in processed_updates:
     return
@@ -186,7 +415,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  # مانع التكرار الذكي لمنع أي رد مزدوج
   update_id = update.update_id
   if update_id in processed_updates:
     return
@@ -201,7 +429,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   text = update.message.text.strip() if update.message.text else ""
   data = load_data()
 
-  # 1. زر الخروج والقوائم العامة
   if text in ["❌ خروج", "🔙 رجوع للقائمة الرئيسية"]:
     user_data.clear()
     await update.message.reply_text(
@@ -216,7 +443,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return
 
-  # 2. فحص الحالات النشطة (State Machine)
+  # قسم امتحن نفسك (AI)
+  if text == "✍️ امتحن نفسك (AI)":
+    user_data.clear()
+    await update.message.reply_text(
+        "✍️ **اختر الامتحان المطلوب من الأزرار بالأسفل 👇**",
+        reply_markup=get_quiz_reply_keyboard(),
+        parse_mode="Markdown"
+    )
+    return
+
+  # بدء امتحان anatomy (عملي) لصفحه 6 مباشرة من الأزرار السفلية
+  if text == "📝 امتحان: anatomy (عملي) لصفحه 6":
+    user_data["quiz_index"] = 0
+    user_data["quiz_score"] = 0
+    await send_quiz_question_reply(update.message, context)
+    return
+
   current_state = user_data.get("state")
 
   if current_state:
@@ -736,7 +979,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       if f_type == "audio":
         await context.bot.send_audio(chat_id=update.message.chat_id, audio=f_id)
       elif f_type == "voice":
-        await context.bot.send_voice(chat_id=update.message.chat_id, voice=f_id)
+        await context.bot.send_voice(chat_id=update.message.chat_id, audio=f_id)
       else:
         await context.bot.send_document(
             chat_id=update.message.chat_id, document=f_id
@@ -847,15 +1090,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       await update.message.reply_text("⚠️ عذراً، لم يتم العثور على هذا التلخيص.")
     return
 
-  if text == "✍️ امتحن نفسك (AI)":
-    user_data.clear()
-    exam_bot_link = "https://t.me/Quiz_zun_bot"
-    await update.message.reply_text(
-        f"اضغط على الرابط التالي للانتقال لبوت الامتحانات والتحدي:\n{exam_bot_link}",
-        reply_markup=get_main_reply_keyboard(),
-    )
-    return
-
   # طلوع حالات الأدمن وبداية الدورات الجديدة
   if text == "⚙️ لوحة الأدمن والإحصائيات":
     user_data.clear()
@@ -922,6 +1156,124 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
 
+# --- نظام إرسال الأسئلة عبر الأزرار التفاعلية (Inline) داخل الشات السفلي ---
+async def quiz_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  query = update.callback_query
+  await query.answer()
+  data = query.data
+  user_data = context.user_data
+
+  if data.startswith("ans_"):
+    parts = data.split("_")
+    q_index = int(parts[1])
+    selected_option = int(parts[2])
+
+    current_q = ANATOMY_P6_QUIZ[q_index]
+    correct_option = current_q["correct"]
+
+    if selected_option == correct_option:
+      user_data["quiz_score"] = user_data.get("quiz_score", 0) + 1
+      res_text = "✅ إجابة صحيحة بطل!"
+    else:
+      correct_text = current_q["options"][correct_option]
+      res_text = f"❌ إجابة خاطئة!\nالإجابة الصحيحة هي: {correct_text}"
+
+    user_data["quiz_index"] = q_index + 1
+
+    if user_data["quiz_index"] < len(ANATOMY_P6_QUIZ):
+      await query.message.edit_text(f"{res_text}\n\nجاري الانتقال للسؤال التالي...")
+      import asyncio
+      await asyncio.sleep(1)
+      await send_quiz_question_inline(query.message, context, edit=True)
+    else:
+      score = user_data.get("quiz_score", 0)
+      total = len(ANATOMY_P6_QUIZ)
+      await query.message.edit_text(
+          f"🏁 **انتهى امتحان anatomy (عملي) لصفحه 6 بنجاح!**\n\n"
+          f"📊 درجاتك: `{score}` من `{total}`\n"
+          f"عاش يا دكتور الأبطال! 🦷🎓",
+          parse_mode="Markdown"
+      )
+      user_data.clear()
+
+
+async def send_quiz_question_reply(message, context):
+  user_data = context.user_data
+  q_index = user_data.get("quiz_index", 0)
+  current_q = ANATOMY_P6_QUIZ[q_index]
+
+  keyboard = []
+  for idx, option in enumerate(current_q["options"]):
+    keyboard.append([InlineKeyboardButton(option, callback_data=f"ans_{q_index}_{idx}")])
+
+  reply_markup = InlineKeyboardMarkup(keyboard)
+  q_text = (
+      f"⏱️ **ملاحظة: معك 15 ثانية للإجابة!**\n"
+      f"السؤال رقم {q_index + 1} من {len(ANATOMY_P6_QUIZ)}:\n\n"
+      f"*{current_q['question']}*"
+  )
+
+  sent_msg = await message.reply_text(
+      q_text,
+      reply_markup=reply_markup,
+      parse_mode="Markdown"
+  )
+
+  context.job_queue.run_once(
+      timeout_quiz_question,
+      15.0,
+      chat_id=message.chat_id,
+      data={"message_id": sent_msg.message_id, "expected_index": q_index},
+      name=str(message.chat_id)
+  )
+
+
+async def send_quiz_question_inline(message, context, edit=False):
+  user_data = context.user_data
+  q_index = user_data.get("quiz_index", 0)
+  current_q = ANATOMY_P6_QUIZ[q_index]
+
+  keyboard = []
+  for idx, option in enumerate(current_q["options"]):
+    keyboard.append([InlineKeyboardButton(option, callback_data=f"ans_{q_index}_{idx}")])
+
+  reply_markup = InlineKeyboardMarkup(keyboard)
+  q_text = (
+      f"⏱️ **ملاحظة: معك 15 ثانية للإجابة!**\n"
+      f"السؤال رقم {q_index + 1} من {len(ANATOMY_P6_QUIZ)}:\n\n"
+      f"*{current_q['question']}*"
+  )
+
+  if edit:
+    sent_msg = await message.edit_text(q_text, reply_markup=reply_markup, parse_mode="Markdown")
+  else:
+    sent_msg = await message.reply_text(q_text, reply_markup=reply_markup, parse_mode="Markdown")
+
+  context.job_queue.run_once(
+      timeout_quiz_question,
+      15.0,
+      chat_id=message.chat_id,
+      data={"message_id": sent_msg.message_id, "expected_index": q_index},
+      name=str(message.chat_id)
+  )
+
+
+async def timeout_quiz_question(context: ContextTypes.DEFAULT_TYPE):
+  job = context.job
+  data = job.data
+  chat_id = job.chat_id
+  message_id = data["message_id"]
+
+  try:
+    await context.bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=message_id,
+        text="⏰ انتهى الوقت (15 ثانية)! انقضى وقت السؤال."
+    )
+  except Exception:
+    pass
+
+
 if __name__ == "__main__":
   port = int(os.environ.get("PORT", 8080))
   web_thread = threading.Thread(
@@ -930,9 +1282,11 @@ if __name__ == "__main__":
   web_thread.daemon = True
   web_thread.start()
 
+  # توكن البوت الأساسي الخاص بك
   TOKEN = "8964990492:AAHbOJ_dOeAkO80O-fZSemaRenz4bG93kFM"
   app_bot = ApplicationBuilder().token(TOKEN).build()
   app_bot.add_handler(CommandHandler("start", start))
+  app_bot.add_handler(CallbackQueryHandler(quiz_callback_handler))
   app_bot.add_handler(
       MessageHandler(filters.ALL & ~filters.COMMAND, handle_message)
   )
