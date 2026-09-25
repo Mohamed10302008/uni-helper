@@ -10,6 +10,12 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from supabase import create_client, Client
+
+# --- إعدادات Supabase السحابية ---
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- سيرفر الويب الأساسي لضمان بقاء البورت مفتوحاً ---
 app = Flask("")
@@ -21,7 +27,6 @@ def home():
 
 
 ADMIN_PASSWORD = "15309"
-DATA_FILE = "znu_dental_data.json"
 
 
 def load_data():
@@ -38,12 +43,10 @@ def load_data():
       "users": [],
   }
 
-  if not os.path.exists(DATA_FILE):
-    return default_data
-
   try:
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-      data = json.load(f)
+    response = supabase.table("bot_storage").select("value").eq("key", "main_data").execute()
+    if response.data and len(response.data) > 0:
+      data = response.data[0]["value"]
       # التأكد من وجود كافة الأقسام الرئيسية لعدم حدوث أخطاء
       if "sections" not in data:
         data["sections"] = default_data["sections"]
@@ -58,17 +61,23 @@ def load_data():
         data["custom_buttons"] = {}
 
       return data
+    else:
+      # لو الجدول فاضي، بنحفظ الهيكل الأساسي أول مرة
+      save_data(default_data)
+      return default_data
   except Exception as e:
-    print(f"Error loading data: {e}")
+    print(f"Error loading data from supabase: {e}")
     return default_data
 
 
 def save_data(data):
   try:
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-      json.dump(data, f, ensure_ascii=False, indent=4)
+    supabase.table("bot_storage").upsert({
+        "key": "main_data",
+        "value": data
+    }).execute()
   except Exception as e:
-    print(f"Error saving data: {e}")
+    print(f"Error saving data to supabase: {e}")
 
 
 # تسجيل المستخدمين الجدد وتتبع عددهم
@@ -530,7 +539,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data["state"] = "WAITING_GROUP_LINK"
         await update.message.reply_text("🔗 أرسل الآن **رابط الجروب**:")
       elif current_state == "AUTH_ADD_YT":
-        user_data["state"] = "WAIT_YT_LINK" if False else "WAITING_YT_LINK"
+        user_data["state"] = "WAITING_YT_LINK"
         await update.message.reply_text(
             "🔗 أرسل الآن **رابط مقطع أو نص يوتيوب الشرح**:"
         )
