@@ -264,6 +264,14 @@ def load_data():
       },
       "custom_buttons": {},
       "users": [],
+      "stats": {
+          "lectures_views": 0,
+          "books_views": 0,
+          "groups_views": 0,
+          "yt_views": 0,
+          "ai_views": 0,
+          "quiz_views": 0
+      }
   }
 
   try:
@@ -281,6 +289,8 @@ def load_data():
         data["users"] = []
       if "custom_buttons" not in data:
         data["custom_buttons"] = {}
+      if "stats" not in data:
+        data["stats"] = default_data["stats"]
 
       return data
     else:
@@ -299,6 +309,21 @@ def save_data(data):
     }).execute()
   except Exception as e:
     print(f"Error saving data to supabase: {e}")
+
+
+def increment_stat(stat_key):
+  data = load_data()
+  if "stats" not in data:
+    data["stats"] = {
+        "lectures_views": 0,
+        "books_views": 0,
+        "groups_views": 0,
+        "yt_views": 0,
+        "ai_views": 0,
+        "quiz_views": 0
+    }
+  data["stats"][stat_key] = data["stats"].get(stat_key, 0) + 1
+  save_data(data)
 
 
 def register_user(user_id):
@@ -446,6 +471,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   # قسم امتحن نفسك (AI)
   if text == "✍️ امتحن نفسك (AI)":
     user_data.clear()
+    increment_stat("quiz_views")
     await update.message.reply_text(
         "✍️ **اختر الامتحان المطلوب من الأزرار بالأسفل 👇**",
         reply_markup=get_quiz_reply_keyboard(),
@@ -457,6 +483,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   if text == "📝 امتحان: anatomy (عملي) لصفحه 6":
     user_data["quiz_index"] = 0
     user_data["quiz_score"] = 0
+    increment_stat("quiz_views")
     await send_quiz_question_reply(update.message, context)
     return
 
@@ -502,6 +529,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
           await update.message.reply_text(msg)
         elif current_state == "AUTH_ADMIN_PANEL":
           users_count = len(data.get("users", []))
+          stats = data.get("stats", {})
           user_data.clear()
           keyboard = [
               [KeyboardButton("📢 إرسال إعلان عام (Broadcast)")],
@@ -512,9 +540,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
               [KeyboardButton("🤖 إضافة تلخيص AI")],
               [KeyboardButton("🔙 رجوع للقائمة الرئيسية")],
           ]
+          admin_msg = (
+              f"⚙️ **لوحة التحكم والإحصائيات:**\n\n"
+              f"👥 إجمالي عدد المستخدمين للبوت: `{users_count}` طالب.\n"
+              f"-----------------------------------\n"
+              f"📊 **عدد مرات استخدام الأقسام:**\n"
+              f"• 📚 المحاضرات: `{stats.get('lectures_views', 0)}` مرة\n"
+              f"• 📚 الكتب: `{stats.get('books_views', 0)}` مرة\n"
+              f"• 🔗 الجروبات: `{stats.get('groups_views', 0)}` مرة\n"
+              f"• 🎥 دكاترة اليوتيوب: `{stats.get('yt_views', 0)}` مرة\n"
+              f"• 🤖 تلخيصات AI: `{stats.get('ai_views', 0)}` مرة\n"
+              f"• ✍️ امتحانات AI: `{stats.get('quiz_views', 0)}` مرة\n\n"
+              f"اختر العملية المطلوبة من الأزرار بالأسفل:"
+          )
           await update.message.reply_text(
-              f"⚙️ **لوحة التحكم والإحصائيات:**\n\n👥 إجمالي عدد المستخدمين للبوت:"
-              f" `{users_count}` طالب.\n\nاختر العملية المطلوبة من الأزرار بالأسفل:",
+              admin_msg,
               reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
               parse_mode="Markdown",
           )
@@ -875,6 +915,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
   # 3. الأقسام الرئيسية والأوامر العادية
   if text == "📚 المحاضرات":
     user_data.clear()
+    increment_stat("lectures_views")
     lectures_dict = data["sections"]["محاضرات"].get("lectures", {})
     if not lectures_dict:
       await update.message.reply_text(
@@ -951,6 +992,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if text == "📚 كتب طب الأسنان":
     user_data.clear()
+    increment_stat("books_views")
     books_list = data["sections"]["كتب"].get("items", [])
     if not books_list:
       await update.message.reply_text(
@@ -979,7 +1021,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
       if f_type == "audio":
         await context.bot.send_audio(chat_id=update.message.chat_id, audio=f_id)
       elif f_type == "voice":
-        await context.bot.send_voice(chat_id=update.message.chat_id, audio=f_id)
+        await context.bot.send_voice(chat_id=update.message.chat_id, voice=f_id)
       else:
         await context.bot.send_document(
             chat_id=update.message.chat_id, document=f_id
@@ -990,6 +1032,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if text == "🔗 أهم الجروبات":
     user_data.clear()
+    increment_stat("groups_views")
     groups = data["sections"].get("groups", {})
     if not groups:
       await update.message.reply_text(
@@ -1009,6 +1052,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if text == "🎥 أفضل دكاترة يوتيوب":
     user_data.clear()
+    increment_stat("yt_views")
     yt_doctors = data["sections"].get("youtube_doctors", {})
     if not yt_doctors:
       await update.message.reply_text(
@@ -1041,6 +1085,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if text == "🤖 تلخيصات AI":
     user_data.clear()
+    increment_stat("ai_views")
     ai_summaries = data["sections"].get("ai_summaries", {})
     if not ai_summaries:
       await update.message.reply_text(
@@ -1191,7 +1236,7 @@ async def quiz_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
       await query.message.edit_text(
           f"🏁 **انتهى امتحان anatomy (عملي) لصفحه 6 بنجاح!**\n\n"
           f"📊 درجاتك: `{score}` من `{total}`\n"
-          f"عاش يا دكتور ! 🦷🎓",
+          f"عاش يا دكتور! 🦷🎓",
           parse_mode="Markdown"
       )
       user_data.clear()
